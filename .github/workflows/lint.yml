@@ -21,3 +21,4 @@ jobs:
 
       - name: Run Checkstyle
         run: mvn -B checkstyle:check
+        working-directory: backend
