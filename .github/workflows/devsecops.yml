@@ -1,5 +1,8 @@
 name: devsecops
 
+permissions:
+  contents: read
+
 on:
    push:
      branch: [main]
@@ -13,4 +16,5 @@ jobs:
 
   sast:
     uses: ./.github/workflows/sast.yml  
+    needs: [secrets_scanning,linting]
 

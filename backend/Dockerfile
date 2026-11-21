@@ -50,5 +50,7 @@ ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 # Application port
 EXPOSE 8080
 
+USER 65532
+
 # Start application with OpenTelemetry
 ENTRYPOINT ["java", "-javaagent:/app/opentelemetry-javaagent.jar", "-jar", "app.jar"]
