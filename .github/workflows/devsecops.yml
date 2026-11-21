@@ -6,7 +6,7 @@ on:
 
 jobs:
   secrets_scanning: 
-    uses: ./.github/workflows/secrets_scanning.yml
+    uses: ./.github/workflows/secrets_scan.yml
 
   linting:
     uses: ./.github/workflows/lint.yml
