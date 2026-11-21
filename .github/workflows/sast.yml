@@ -5,6 +5,7 @@ on:
 
 jobs:
   sast:
+   name: SAST - Semgrep
    runs-on: ubuntu-latest
 
    permissions:

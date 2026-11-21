@@ -1,0 +1,27 @@
+
+name: Code Testing
+
+on:
+  workflow_call:
+
+jobs:
+  unit-tests:
+    name: JUnit & Mockito Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Run Unit Tests (No Database)
+        working-directory: backend
+        run: |
+          ./mvnw --batch-mode --no-transfer-progress test

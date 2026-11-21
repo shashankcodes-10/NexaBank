@@ -14,12 +14,15 @@ jobs:
   linting:
     uses: ./.github/workflows/lint.yml
 
+  code_test.yml:
+    uses: ./.github/workflows/code_test.yml  
+
   sast:
     uses: ./.github/workflows/sast.yml  
-    needs: [secrets_scanning,linting]
+    needs: [secrets_scanning,linting,code_test.yml]
 
   sca:
     uses: ./.github/workflows/sca.yml  
-    needs: [secrets_scanning,linting]
+    needs: [secrets_scanning,linting,code_test.yml]
     secrets: inherit
 

@@ -5,6 +5,7 @@ on:
 
 jobs:
   lint:
+    name: Lint - Checkstyle
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
