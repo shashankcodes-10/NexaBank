@@ -21,4 +21,5 @@ jobs:
   sca:
     uses: ./.github/workflows/sca.yml  
     needs: [secrets_scanning,linting]
+    secrets: inherit
 
