@@ -11,3 +11,6 @@ jobs:
   linting:
     uses: ./.github/workflows/lint.yml
 
+  sast:
+    uses: ./.github/workflows/sast.yml  
+

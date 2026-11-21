@@ -1,0 +1,27 @@
+name: sast
+
+on:
+  workflow_call:
+
+sast:
+  name: SAST - Semgrep
+  runs-on: ubuntu-latest
+
+  permissions:
+    contents: read
+
+  container:
+    image: semgrep/semgrep
+
+  steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Run Semgrep SAST Scan
+      run: |
+        semgrep scan \
+          --config p/java \
+          --config p/owasp-top-ten \
+          --config p/secrets \
+          --error \
+          .
