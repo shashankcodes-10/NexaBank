@@ -26,3 +26,6 @@ jobs:
     needs: [secrets_scanning,linting,testing]
     secrets: inherit
 
+  image scan:
+    uses: ./.github/workflows/image_scan.yml  
+
