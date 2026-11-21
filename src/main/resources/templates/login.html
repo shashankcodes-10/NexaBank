@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" data-theme="light">
+<head th:replace="~{fragments/layout :: head('Sign in | NexaBank')}"></head>
+<body class="auth-page">
+<div class="auth-wrapper">
+    <nav th:replace="~{fragments/layout :: navbar-simple}"></nav>
+    <main class="auth-main">
+        <section class="auth-story">
+            <div class="auth-story-content">
+                <span class="eyebrow auth-eyebrow"><span class="eyebrow-dot"></span> BANKING, REIMAGINED</span>
+                <h1>Make every<br>move <em>matter.</em></h1>
+                <p>A clearer view of your money starts here. Simple tools, thoughtful design, and banking that moves with you.</p>
+                <div class="auth-feature-list"><span><i class="bi bi-check-circle-fill"></i> Your account at a glance</span><span><i class="bi bi-check-circle-fill"></i> Easy transfers and payments</span><span><i class="bi bi-check-circle-fill"></i> Activity when you need it</span></div>
+            </div>
+            <div class="story-art"><div class="story-ring ring-a"></div><div class="story-ring ring-b"></div><div class="story-mini-card"><span>NEXA / EVERYDAY</span><i class="bi bi-wifi"></i><strong>Move with confidence.</strong><small>YOUR MONEY, IN MOTION</small></div></div>
+            <span class="auth-story-foot">A smarter way to stay on top of your finances.</span>
+        </section>
+        <section class="auth-form-side">
+            <div class="auth-card">
+                <div class="auth-mobile-brand"><span class="brand-mark"><i class="bi bi-layers-half"></i></span><span class="brand-wordmark"><span class="brand-name-primary">Nexa</span><span class="brand-name-secondary">Bank</span></span></div>
+                <span class="form-kicker">YOUR ACCOUNT</span>
+                <h2>Welcome back</h2>
+                <p class="auth-subtitle">Sign in to pick up right where you left off.</p>
+                <div th:if="${param.error}" class="alert alert-app"><i class="bi bi-exclamation-circle"></i> Invalid username or password.</div>
+                <div th:if="${param.logout}" class="alert alert-success-app"><i class="bi bi-check-circle"></i> You have been logged out.</div>
+                <div th:if="${param.registered}" class="alert alert-success-app"><i class="bi bi-check-circle"></i> Registration successful. Please sign in.</div>
+                <form th:action="@{/login}" method="post">
+                    <label class="form-label" for="username">Username</label>
+                    <div class="auth-input"><i class="bi bi-person"></i><input type="text" id="username" name="username" placeholder="Enter your username" autocomplete="username" required autofocus></div>
+                    <label class="form-label mt-3" for="password">Password</label>
+                    <div class="auth-input"><i class="bi bi-lock"></i><input type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password" required><button type="button" class="password-toggle" onclick="togglePassword('password', this)" aria-label="Show password"><i class="bi bi-eye"></i></button></div>
+                    <button type="submit" class="btn btn-auth w-100">Sign in <i class="bi bi-arrow-right"></i></button>
+                </form>
+                <p class="auth-switch">New to NexaBank? <a th:href="@{/register}">Create an account</a></p>
+                <div class="auth-assurance"><i class="bi bi-shield-lock"></i><span><strong>Your security matters</strong><small>Your sign-in is protected by encrypted authentication.</small></span></div>
+            </div>
+        </section>
+    </main>
+    <footer th:replace="~{fragments/layout :: footer}"></footer>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>function togglePassword(id, btn) { const input=document.getElementById(id), icon=btn.querySelector('i'); input.type=input.type==='password'?'text':'password'; icon.className=input.type==='password'?'bi bi-eye':'bi bi-eye-slash'; }</script>
+</body>
+</html>

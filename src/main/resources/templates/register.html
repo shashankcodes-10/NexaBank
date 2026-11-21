@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" data-theme="light">
+<head th:replace="~{fragments/layout :: head('Create account | NexaBank')}"></head>
+<body class="auth-page">
+<div class="auth-wrapper">
+    <nav th:replace="~{fragments/layout :: navbar-simple}"></nav>
+    <main class="auth-main">
+        <section class="auth-story">
+            <div class="auth-story-content">
+                <span class="eyebrow auth-eyebrow"><span class="eyebrow-dot"></span> YOUR NEXT CHAPTER</span>
+                <h1>Start with<br><em>something</em><br>better.</h1>
+                <p>Open your NexaBank account and bring your everyday banking into one simple, easy-to-use space.</p>
+                <div class="auth-feature-list"><span><i class="bi bi-check-circle-fill"></i> A personal banking dashboard</span><span><i class="bi bi-check-circle-fill"></i> Simple money transfers</span><span><i class="bi bi-check-circle-fill"></i> Clear transaction history</span></div>
+            </div>
+            <div class="story-art"><div class="story-ring ring-a"></div><div class="story-ring ring-b"></div><div class="story-mini-card"><span>NEXA / WELCOME</span><i class="bi bi-stars"></i><strong>Your money.<br>Your momentum.</strong><small>LET'S GET STARTED</small></div></div>
+            <span class="auth-story-foot">A smarter way to stay on top of your finances.</span>
+        </section>
+        <section class="auth-form-side">
+            <div class="auth-card">
+                <div class="auth-mobile-brand"><span class="brand-mark"><i class="bi bi-layers-half"></i></span><span class="brand-wordmark"><span class="brand-name-primary">Nexa</span><span class="brand-name-secondary">Bank</span></span></div>
+                <span class="form-kicker">GET STARTED</span>
+                <h2>Create your account</h2>
+                <p class="auth-subtitle">It only takes a moment to get started.</p>
+                <div th:if="${error}" class="alert alert-app"><i class="bi bi-exclamation-circle"></i> <span th:text="${error}">Something went wrong.</span></div>
+                <form th:action="@{/register}" method="post">
+                    <label class="form-label" for="username">Choose a username</label>
+                    <div class="auth-input"><i class="bi bi-person"></i><input type="text" id="username" name="username" th:value="${enteredUsername}" placeholder="e.g. alexmorgan" autocomplete="username" required autofocus minlength="3" maxlength="30" pattern="[A-Za-z0-9._\-]{3,30}" title="3-30 characters: letters, numbers, dot, underscore or hyphen"></div>
+                    <label class="form-label mt-3" for="password">Create password</label>
+                    <div class="auth-input"><i class="bi bi-lock"></i><input type="password" id="password" name="password" placeholder="At least 4 characters" autocomplete="new-password" required minlength="4" maxlength="72" oninput="updateStrength(this.value)"><button type="button" class="password-toggle" onclick="togglePassword('password', this)" aria-label="Show password"><i class="bi bi-eye"></i></button></div>
+                    <div class="strength-wrap"><div class="strength-track"><div id="strengthBar"></div></div><small id="strengthText">Use a mix of letters, numbers and symbols.</small></div>
+                    <button type="submit" class="btn btn-auth w-100">Create account <i class="bi bi-arrow-right"></i></button>
+                </form>
+                <p class="auth-switch">Already have an account? <a th:href="@{/login}">Sign in</a></p>
+                <div class="auth-assurance"><i class="bi bi-shield-lock"></i><span><strong>Your security matters</strong><small>Your credentials are handled by secure authentication.</small></span></div>
+            </div>
+        </section>
+    </main>
+    <footer th:replace="~{fragments/layout :: footer}"></footer>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script th:inline="none">
+function togglePassword(id,btn){const input=document.getElementById(id),icon=btn.querySelector('i');input.type=input.type==='password'?'text':'password';icon.className=input.type==='password'?'bi bi-eye':'bi bi-eye-slash';}
+function updateStrength(value){const bar=document.getElementById('strengthBar'),text=document.getElementById('strengthText');let score=0;if(value.length>=4)score++;if(value.length>=8)score++;if(/[A-Z]/.test(value)&&/[0-9]/.test(value))score++;if(/[^A-Za-z0-9]/.test(value))score++;const levels=[['0%','transparent','Use a mix of letters, numbers and symbols.'],['25%','#e05c69','Weak password'],['50%','#e6a23c','Fair password'],['75%','#4778e8','Good password'],['100%','#15966b','Strong password']];bar.style.width=levels[score][0];bar.style.background=levels[score][1];text.textContent=levels[score][2];}
+</script>
+</body>
+</html>
