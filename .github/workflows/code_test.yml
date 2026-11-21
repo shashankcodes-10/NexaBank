@@ -5,7 +5,7 @@ on:
   workflow_call:
 
 jobs:
-  unit-tests:
+  unit_tests:
     name: JUnit & Mockito Unit Tests
     runs-on: ubuntu-latest
 
