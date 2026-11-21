@@ -1,4 +1,4 @@
-name: devsecops
+name: DevSecOps
 
 permissions:
   contents: read
@@ -16,5 +16,9 @@ jobs:
 
   sast:
     uses: ./.github/workflows/sast.yml  
+    needs: [secrets_scanning,linting]
+
+  sca:
+    uses: ./.github/workflows/sca.yml  
     needs: [secrets_scanning,linting]
 

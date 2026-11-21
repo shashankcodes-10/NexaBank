@@ -1,0 +1,50 @@
+name: Software Composition Analysis
+
+on:
+  workflow_call:
+
+jobs:
+  sas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Cache OWASP NVD Database
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository/org/owasp/dependency-check-data
+          key: owasp-nvd-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-${{ github.run_id }}
+          restore-keys: |
+            owasp-nvd-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-
+            owasp-nvd-${{ runner.os }}-
+
+      - name: Run OWASP Dependency Check
+        working-directory: backend
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          ./mvnw --batch-mode --no-transfer-progress \
+            org.owasp:dependency-check-maven:12.1.0:check \
+            -DdataDirectory="$HOME/.m2/repository/org/owasp/dependency-check-data" \
+            -Dformats=HTML,JSON,XML,SARIF \
+            -DfailBuildOnCVSS=7 \
+            -DnvdApiKey="${NVD_API_KEY}" \
+            -DsuppressionFile=suppression.xml
+
+      - name: Upload Dependency Check Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: owasp-dependency-check-report
+          path: backend/target/dependency-check-report.*
+          if-no-files-found: warn
+          retention-days: 14  
