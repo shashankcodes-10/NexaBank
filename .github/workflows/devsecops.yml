@@ -26,9 +26,14 @@ jobs:
     needs: [secrets_scanning,linting,testing]
     secrets: inherit
 
+  sonar-scan:
+    uses: ./.github/workflows/sonar_scan.yml  
+    needs: [secrets_scanning,linting,testing]
+    secrets: inherit
+
   image-scanning:
     uses: ./.github/workflows/image_scan.yml  
-    needs: [sast,sca]
+    needs: [sast,sca,sonar-scan]
     secrets: inherit
 
   docker-push:
