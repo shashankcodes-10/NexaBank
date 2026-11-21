@@ -22,11 +22,11 @@ jobs:
       - name: Cache OWASP NVD Database
         uses: actions/cache@v6
         with:
-          path: ~/.m2/repository/org/owasp/dependency-check-data
-          key: owasp-nvd-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-${{ github.run_id }}
+          path: ~/.dependency-check-data-12.2.2
+          key: owasp-12.2.2-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-${{ github.run_id }}
           restore-keys: |
-            owasp-nvd-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-
-            owasp-nvd-${{ runner.os }}-
+            owasp-12.2.2-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-
+            owasp-12.2.2-${{ runner.os }}-
 
       - name: Run OWASP Dependency Check
         working-directory: backend
@@ -34,8 +34,8 @@ jobs:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           ./mvnw --batch-mode --no-transfer-progress \
-            org.owasp:dependency-check-maven:12.1.0:check \
-            -DdataDirectory="$HOME/.m2/repository/org/owasp/dependency-check-data" \
+            org.owasp:dependency-check-maven:12.2.2:check \
+            -DdataDirectory="$HOME/.dependency-check-data-12.2.2" \
             -Dformats=HTML,JSON,XML,SARIF \
             -DfailBuildOnCVSS=7 \
             -DnvdApiKey="${NVD_API_KEY}" \
@@ -48,4 +48,4 @@ jobs:
           name: owasp-dependency-check-report
           path: backend/target/dependency-check-report.*
           if-no-files-found: warn
-          retention-days: 14  
+          retention-days: 14
