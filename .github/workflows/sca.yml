@@ -19,13 +19,14 @@ jobs:
           cache: maven
           cache-dependency-path: backend/pom.xml
 
-      - name: Cache OWASP NVD Database
-        uses: actions/cache@v6
+      # Restore only. Saving is a separate step below so the NVD data is
+      # cached even when the scan fails on vulnerabilities.
+      - name: Restore OWASP NVD Database cache
+        uses: actions/cache/restore@v6
         with:
           path: ~/.dependency-check-data-12.2.2
-          key: owasp-12.2.2-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-${{ github.run_id }}
+          key: owasp-12.2.2-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
-            owasp-12.2.2-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}-
             owasp-12.2.2-${{ runner.os }}-
 
       - name: Run OWASP Dependency Check
@@ -40,6 +41,13 @@ jobs:
             -DfailBuildOnCVSS=7 \
             -DnvdApiKey="${NVD_API_KEY}" \
             -DsuppressionFile=suppression.xml
+
+      - name: Save OWASP NVD Database cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.dependency-check-data-12.2.2
+          key: owasp-12.2.2-${{ runner.os }}-${{ github.run_id }}
 
       - name: Upload Dependency Check Report
         if: always()
