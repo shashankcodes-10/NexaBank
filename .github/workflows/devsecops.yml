@@ -28,4 +28,6 @@ jobs:
 
   image-scanning:
     uses: ./.github/workflows/image_scan.yml  
+    needs: [sast,sca]
+    secrets: inherit
 
