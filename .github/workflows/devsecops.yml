@@ -19,10 +19,10 @@ jobs:
 
   sast:
     uses: ./.github/workflows/sast.yml  
-    needs: [secrets_scanning,linting,code_test.yml]
+    needs: [secrets_scanning,linting,testing]
 
   sca:
     uses: ./.github/workflows/sca.yml  
-    needs: [secrets_scanning,linting,code_test.yml]
+    needs: [secrets_scanning,linting,testing]
     secrets: inherit
 
