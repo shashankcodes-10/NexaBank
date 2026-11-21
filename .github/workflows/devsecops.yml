@@ -1,0 +1,14 @@
+name: devsecops
+
+on:
+   push:
+     branch: [main]
+
+jobs:
+  secrets_scanning: 
+    uses: ./.github/workflows/lint.yml
+
+  lint.yml:
+    uses: ./.github/workflows/secrets_scanning.yml
+
+    
