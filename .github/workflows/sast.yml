@@ -1,19 +1,19 @@
-name: sast
+name: SAST - Semgrep
 
 on:
   workflow_call:
 
-sast:
-  name: SAST - Semgrep
-  runs-on: ubuntu-latest
+jobs:
+  sast:
+   runs-on: ubuntu-latest
 
-  permissions:
+   permissions:
     contents: read
 
-  container:
+   container:
     image: semgrep/semgrep
 
-  steps:
+   steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
