@@ -45,7 +45,7 @@ spec:
         - name: nexabank
           # The image tag below is rewritten by .github/workflows/bump.yml after every
           # successful build (tag = short commit SHA). Do not edit the tag by hand.
-          image: shashank971/bankapp:sha-77d8da8
+          image: shashank971/nexabank:sha-f5855ca
           imagePullPolicy: IfNotPresent   # tags are unique per commit, so no need for Always
           securityContext:
             allowPrivilegeEscalation: false
