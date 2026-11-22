@@ -3,25 +3,26 @@ name: Static Application Security Testing
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   sast:
-   name: SAST - Semgrep
-   runs-on: ubuntu-latest
+    name: SAST - Semgrep
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: semgrep/semgrep:latest   # TODO: pin to a digest (semgrep/semgrep@sha256:...)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-   permissions:
-    contents: read
-
-   container:
-    image: semgrep/semgrep
-
-   steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-
-    - name: Run Semgrep SAST Scan
-      uses: semgrep/semgrep-action@v1
-      with:
-        config: >-
-            p/java
-            p/owasp-top-ten
-            p/secrets
+      # semgrep-action is deprecated and was redundant inside the semgrep container,
+      # so run the CLI directly. --error fails the job when there are findings.
+      - name: Run Semgrep
+        run: >-
+          semgrep scan
+          --config p/java --config p/owasp-top-ten --config p/secrets
+          --error --metrics=off .
