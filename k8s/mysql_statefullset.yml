@@ -35,6 +35,7 @@ spec:
           volumeMounts:
             - name: mysql-storage
               mountPath: /var/lib/mysql
+              subPath: mysql      # EBS/ext4 volumes have a lost+found dir at the root that breaks mysqld init
           resources:
             requests:
               cpu: "250m"
