@@ -51,7 +51,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.image }}
-            ${{ vars.DOCKERHUB_USERNAME }}/bankapp:latest
+            ${{ vars.DOCKERHUB_USERNAME }}/nexabank:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
