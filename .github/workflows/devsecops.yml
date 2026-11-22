@@ -1,43 +1,73 @@
 name: DevSecOps
 
+on:
+  push:
+    branches: [main]
+    # only rebuild when code or the pipeline changes (the bump commit only touches k8s/)
+    paths:
+      - 'backend/**'
+      - '.github/workflows/**'
+      - 'sonar-project.properties'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Image platforms (default amd64 only; use linux/amd64,linux/arm64 for multi-arch)
+        default: linux/amd64
+        type: string
+
+# Cancel superseded PR runs, but never cancel a run on main (it may be mid-deploy)
+concurrency:
+  group: devsecops-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least privilege by default; jobs that need more ask for it explicitly below
 permissions:
   contents: read
-
-on:
-   workflow_dispatch:
+  pull-requests: read
 
 jobs:
-  secrets_scanning: 
+  # ---- Stage 1: everything runs in parallel; only the push waits for all of it ----
+  secrets-scan:
     uses: ./.github/workflows/secrets_scan.yml
 
-  linting:
+  lint:
     uses: ./.github/workflows/lint.yml
 
-  testing:
-    uses: ./.github/workflows/code_test.yml  
-
   sast:
-    uses: ./.github/workflows/sast.yml  
-    needs: [secrets_scanning,linting,testing]
+    uses: ./.github/workflows/sast.yml
 
   sca:
-    uses: ./.github/workflows/sca.yml  
-    needs: [secrets_scanning,linting,testing]
-    secrets: inherit
+    uses: ./.github/workflows/sca.yml
+    secrets:
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
-  sonar-scan:
-    uses: ./.github/workflows/sonar_scan.yml  
-    needs: [secrets_scanning,linting,testing]
-    secrets: inherit
+  test-and-sonar:          # runs the unit tests (mvn verify) and the Sonar scan in one job
+    uses: ./.github/workflows/sonar_scan.yml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  image-scanning:
-    uses: ./.github/workflows/image_scan.yml  
-    needs: [sast,sca,sonar-scan]
-    secrets: inherit
+  image-scan:
+    uses: ./.github/workflows/image_scan.yml
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  # ---- Stage 2: only on main, only if every check passed ----
   docker-push:
-    uses: ./.github/workflows/docker_push.yml   
-    needs: [image-scanning]
-    secrets: inherit
+    needs: [secrets-scan, lint, sast, sca, test-and-sonar, image-scan]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/docker_push.yml
+    with:
+      platforms: ${{ inputs.platforms || 'linux/amd64' }}
+    secrets:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-
+  # ---- Stage 3: write the new image tag into k8s/ so ArgoCD deploys it to EKS ----
+  bump-manifest:
+    needs: docker-push
+    uses: ./.github/workflows/bump.yml
+    permissions:
+      contents: write
+    with:
+      image: ${{ needs.docker-push.outputs.image }}
