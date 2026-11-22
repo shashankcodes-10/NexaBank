@@ -4,8 +4,7 @@ permissions:
   contents: read
 
 on:
-   push:
-     branch: [main]
+   workflow_dispatch:
 
 jobs:
   secrets_scanning: 
