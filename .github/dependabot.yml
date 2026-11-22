@@ -23,12 +23,3 @@ updates:
       # one PR for all minor/patch bumps instead of a PR per library
       maven-minor-patch:
         update-types: [minor, patch]
-
-  # Base images in backend/Dockerfile. Note: dhi.io is a private registry; if Dependabot
-  # cannot read those images, add a `registries:` block or drop this entry.
-  - package-ecosystem: docker
-    directory: /backend
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7      # wait 7 days before proposing brand-new releases
