@@ -8,7 +8,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate   
+    type: Recreate   # RWO (EBS) volume: never run two pods at once during a rollout
   selector:
     matchLabels:
       app: ollama
@@ -32,6 +32,7 @@ spec:
           lifecycle:
             postStart:
               exec:
+                # pull the model once the server is up; cached on the volume afterwards
                 command:
                   - /bin/sh
                   - -c
@@ -41,13 +42,14 @@ spec:
           volumeMounts:
             - name: models
               mountPath: /root/.ollama
+          # sized for t3.medium nodes (2 vCPU / 4 GiB)
           resources:
             requests:
               cpu: "500m"
-              memory: "1Gi"
+              memory: "1536Mi"
             limits:
-              cpu: "2"
-              memory: "3Gi"
+              cpu: "1500m"
+              memory: "2560Mi"
           startupProbe:
             httpGet:
               path: /
@@ -55,6 +57,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 30
           readinessProbe:
+            # Ready only after the model is pulled
             exec:
               command: ["/bin/sh", "-c", 'ollama list | grep -q "$OLLAMA_MODEL"']
             initialDelaySeconds: 20
