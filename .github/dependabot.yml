@@ -1,0 +1,28 @@
+# Dependabot opens pull requests when a dependency has a newer version.
+# Important here: our workflows pin actions to commit SHAs, and Dependabot is what
+# keeps those SHAs from going stale (it bumps the SHA and the "# vX" comment).
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: maven
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # one PR for all minor/patch bumps instead of a PR per library
+      maven-minor-patch:
+        update-types: [minor, patch]
+
+  # Base images in backend/Dockerfile. Note: dhi.io is a private registry; if Dependabot
+  # cannot read those images, add a `registries:` block or drop this entry.
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
