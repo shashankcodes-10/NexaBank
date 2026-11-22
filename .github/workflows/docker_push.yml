@@ -83,4 +83,7 @@ jobs:
           cache-to: type=gha,scope=backend,mode=max
 
       - name: Summary
-        run: echo "Pushed ${{ steps.meta.outputs.image }} (${{ inputs.platforms }})" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          PLATFORMS: ${{ inputs.platforms }}
+        run: echo "Pushed ${IMAGE} (${PLATFORMS})" >> "$GITHUB_STEP_SUMMARY"

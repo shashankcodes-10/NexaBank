@@ -1,0 +1,8 @@
+# Accepted risks, reviewed together with backend/suppression.xml (same expiry).
+# Spring Framework 6.2.19: the only fix is Spring Framework 7 (Spring Boot 4); 6.2.x is out of OSS support.
+# Re-check when upgrading Spring Boot, then delete these lines.
+
+# XsltView RCE: app has no XSLT views
+CVE-2026-47884 exp:2027-01-31
+# Server-Sent Events stream corruption: app has no SseEmitter / text/event-stream
+CVE-2026-47890 exp:2027-01-31

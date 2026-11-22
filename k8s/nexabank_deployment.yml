@@ -47,6 +47,8 @@ spec:
           # successful build (tag = short commit SHA). Do not edit the tag by hand.
           image: shashank971/bankapp:latest
           imagePullPolicy: IfNotPresent   # tags are unique per commit, so no need for Always
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - name: http
               containerPort: 8080

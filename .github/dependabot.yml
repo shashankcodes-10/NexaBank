@@ -8,12 +8,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7      # wait 7 days before proposing brand-new releases
     open-pull-requests-limit: 5
 
   - package-ecosystem: maven
     directory: /backend
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7      # wait 7 days before proposing brand-new releases
     open-pull-requests-limit: 5
     groups:
       # one PR for all minor/patch bumps instead of a PR per library
@@ -26,3 +30,5 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7      # wait 7 days before proposing brand-new releases
