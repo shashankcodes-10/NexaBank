@@ -2,36 +2,58 @@ name: Image Scan
 
 on:
   workflow_call:
+    secrets:
+      DOCKERHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
 
 jobs:
   image_scan:
-    name: Image Scan
+    name: Hadolint + Trivy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Hadolint
-        uses: hadolint/hadolint-action@v3.5.0
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:
           dockerfile: backend/Dockerfile
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
       - name: Login to dhi.io
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: dhi.io
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build image
-        working-directory: backend
-        run: docker build -t nexabank:latest .
-
-      - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
+      # Build once (amd64) into the local Docker daemon and write the layer cache.
+      # docker_push.yml reads the same cache scope, so the real build there is mostly cache hits.
+      - name: Build image (local, not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          image-ref: nexabank:latest
+          context: backend
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: nexabank:scan
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      # Blocking: fixable CRITICAL vulnerabilities fail the pipeline.
+      # Use `severity: CRITICAL` for a stricter gate.
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: nexabank:scan
           format: table
           exit-code: '1'
           ignore-unfixed: true
