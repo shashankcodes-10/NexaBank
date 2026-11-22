@@ -31,7 +31,7 @@
         <log4j2.version>2.25.5</log4j2.version>
 
         <!-- Code quality plugin versions -->
-        <spotless.version>2.44.5</spotless.version>
+        <spotless.version>3.11.0</spotless.version>
         <checkstyle.version>3.6.0</checkstyle.version>
     </properties>
 
