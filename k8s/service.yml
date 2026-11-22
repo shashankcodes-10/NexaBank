@@ -1,10 +1,10 @@
-# Headless service: gives the StatefulSet stable DNS (mysql-service resolves to the pod)
 apiVersion: v1
 kind: Service
 metadata:
   name: mysql-service
   namespace: nexabank-ns
 spec:
+  clusterIP: None            # headless, used by the StatefulSet
   selector:
     app: nexabank-db
   ports:
@@ -18,6 +18,7 @@ metadata:
   name: ollama-service
   namespace: nexabank-ns
 spec:
+  type: ClusterIP
   selector:
     app: ollama
   ports:
@@ -31,6 +32,7 @@ metadata:
   name: nexabank-service
   namespace: nexabank-ns
 spec:
+  type: ClusterIP            # exposed through the Envoy Gateway (gateway.yml)
   selector:
     app: nexabank
   ports:
