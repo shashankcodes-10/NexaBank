@@ -6,6 +6,7 @@ metadata:
   labels:
     app: nexabank
 spec:
+  # replicas omitted on purpose: the HPA (min 2) owns the replica count
   selector:
     matchLabels:
       app: nexabank
@@ -42,8 +43,10 @@ spec:
               cpu: "100m"
       containers:
         - name: nexabank
+          # The image tag below is rewritten by .github/workflows/bump.yml after every
+          # successful build (tag = short commit SHA). Do not edit the tag by hand.
           image: shashank971/bankapp:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: IfNotPresent   # tags are unique per commit, so no need for Always
           ports:
             - name: http
               containerPort: 8080
