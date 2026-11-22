@@ -1,0 +1,71 @@
+name: Bump image in k8s manifest
+
+# Writes the freshly pushed image into k8s/nexabank_deployment.yml and commits it to main.
+# ArgoCD watches k8s/, sees the commit and rolls the new image out to EKS.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Full image reference, e.g. shashank971/bankapp:ab12cd3
+        required: true
+        type: string
+      manifest:
+        type: string
+        default: k8s/nexabank_deployment.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Update manifest and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # two quick pushes must not race each other on the same branch
+    concurrency:
+      group: bump-manifest
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0          # `git pull --rebase` below needs real history
+
+      # Replaces the first `image:` line after the `- name: nexabank` container only
+      # (the busybox init container is untouched).
+      - name: Update image in manifest
+        env:
+          IMAGE: ${{ inputs.image }}
+          MANIFEST: ${{ inputs.manifest }}
+        run: |
+          set -euo pipefail
+          sed -i -E '/^[[:space:]]+- name: nexabank$/,/^[[:space:]]+image:/ s#^([[:space:]]+image:[[:space:]]*).*#\1'"${IMAGE}"'#' "$MANIFEST"
+          grep -q "image: ${IMAGE}\$" "$MANIFEST" || { echo "::error::image line was not updated"; exit 1; }
+          git --no-pager diff -- "$MANIFEST"
+
+      - name: Commit and push
+        env:
+          IMAGE: ${{ inputs.image }}
+          MANIFEST: ${{ inputs.manifest }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Manifest already uses ${IMAGE}, nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # scoped add: never commit anything but the manifest
+          git add "$MANIFEST"
+          git commit -m "ci: deploy ${IMAGE##*:} [skip ci]"
+
+          # another push may land meanwhile: rebase and retry
+          for i in 1 2 3; do
+            git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH" && exit 0
+            echo "Push rejected (attempt ${i}); retrying..."
+            sleep $((i * 5))
+          done
+          exit 1
