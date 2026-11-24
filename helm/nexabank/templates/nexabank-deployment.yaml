@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexabank
+  labels:
+    app: nexabank
+spec:
+  # replicas omitted on purpose: the HPA owns the replica count
+  selector:
+    matchLabels:
+      app: nexabank
+  template:
+    metadata:
+      labels:
+        app: nexabank
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for MySQL..."
+              attempts=0
+              until nc -z mysql-service 3306; do
+                attempts=$((attempts + 1))
+                if [ "$attempts" -ge 60 ]; then
+                  echo "MySQL connection timed out"
+                  exit 1
+                fi
+                sleep 5
+              done
+              echo "MySQL is reachable!"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { memory: 32Mi, cpu: 50m }
+            limits: { memory: 64Mi, cpu: 100m }
+      containers:
+        - name: nexabank
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: {{ .Values.app.managementPort }}
+          envFrom:
+            - configMapRef:
+                name: nexabank-configmap
+            - secretRef:
+                name: nexabank-secret
+          env:
+            # POD_NAME must stay above the variable that uses it ($(POD_NAME))
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # --- OpenTelemetry: the Dockerfile sets the agent + exporter type, the endpoint is set here ---
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.otlpEndpoint | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=production,k8s.pod.name=$(POD_NAME),k8s.namespace.name={{ .Release.Namespace }}"
+            # --- Metrics on a separate port (not exposed through the Service / Gateway) ---
+            - name: MANAGEMENT_SERVER_PORT
+              value: {{ .Values.app.managementPort | quote }}
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: "health,prometheus"
+            # --- Put trace/span ids in the log line so Loki <-> Tempo can be linked in Grafana ---
+            - name: LOGGING_PATTERN_CONSOLE
+              value: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [trace_id=%X{trace_id} span_id=%X{span_id}] - %msg%n"
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

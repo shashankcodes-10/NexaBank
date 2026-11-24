@@ -1,0 +1,52 @@
+# The two marked lines are rewritten by .github/workflows/bump.yml after every image build.
+# Do not rename the markers.
+image:
+  repository: shashank971/nexabank # managed by bump.yml (repository)
+  tag: "latest" # managed by bump.yml (tag)
+  pullPolicy: IfNotPresent
+
+secrets:
+  # AWS Secrets Manager secret (created by Terraform, filled by scripts/set-secrets.sh)
+  mysqlSecretName: nexabank/mysql
+
+app:
+  mysqlDatabase: nexabankdb
+  ollamaModel: "qwen2.5:1.5b"
+  managementPort: 8081
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+
+mysql:
+  image: mysql:8.0
+  storage: 5Gi
+  storageClass: gp3
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+
+ollama:
+  image: ollama/ollama:latest
+  storage: 5Gi
+  storageClass: gp3
+  resources:
+    requests: { cpu: 500m, memory: 1536Mi }
+    limits: { cpu: 1500m, memory: 2560Mi }
+
+hpa:
+  minReplicas: 2
+  maxReplicas: 4
+  cpuUtilization: 70
+
+observability:
+  # OTLP/HTTP endpoint of the collector (installed in the observability namespace)
+  otlpEndpoint: http://otel-collector.observability.svc.cluster.local:4318
+  podMonitor: true
+
+gateway:
+  name: nexabank-gateway
+  # empty = HTTP only on the load balancer hostname
+  hostname: ""
+  tls:
+    enabled: false
+    clusterIssuer: letsencrypt-staging

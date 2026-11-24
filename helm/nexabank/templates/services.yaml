@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  clusterIP: None # headless, used by the StatefulSet
+  selector:
+    app: nexabank-db
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-service
+spec:
+  type: ClusterIP
+  selector:
+    app: ollama
+  ports:
+    - name: http
+      port: 11434
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexabank-service
+spec:
+  type: ClusterIP # exposed through the Envoy Gateway
+  selector:
+    app: nexabank
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
