@@ -1,0 +1,5 @@
+# The Grafana ExternalSecret below needs its namespace before Prometheus (same wave) creates it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
