@@ -2,11 +2,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mysql-pvc
-  namespace: nexabank-ns
 spec:
   storageClassName: gp3
-  accessModes:
-    - ReadWriteOnce
+  accessModes: [ReadWriteOnce]
   resources:
     requests:
       storage: 5Gi
@@ -15,11 +13,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: ollama-pvc
-  namespace: nexabank-ns
 spec:
   storageClassName: gp3
-  accessModes:
-    - ReadWriteOnce
+  accessModes: [ReadWriteOnce]
   resources:
     requests:
       storage: 5Gi

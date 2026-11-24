@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: mysql-statefulset
-  namespace: nexabank-ns
   labels:
     app: nexabank-db
 spec:

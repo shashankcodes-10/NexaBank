@@ -1,0 +1,15 @@
+# Prometheus scrapes the app's metrics from the management port (8081)
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: nexabank
+  labels:
+    app: nexabank
+spec:
+  selector:
+    matchLabels:
+      app: nexabank
+  podMetricsEndpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: 30s
