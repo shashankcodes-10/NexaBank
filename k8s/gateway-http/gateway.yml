@@ -1,0 +1,56 @@
+# HTTP only: reachable on the load balancer hostname. Used when you have no domain.
+# The GatewayClass "envoy" is created by scripts/deploy.sh (gitops/gateway/gatewayclass.yaml).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: nexabank-gateway
+spec:
+  gatewayClassName: envoy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: nexabank-route
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: nexabank-gateway
+      sectionName: http
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: nexabank-service
+          port: 8080
+          weight: 1
+---
+# Envoy Gateway ignores Service sessionAffinity. The app keeps login/CSRF state in memory,
+# so pin each browser to one pod with a cookie.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: nexabank-session
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: nexabank-route
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: Cookie
+      cookie:
+        name: NEXABANK_AFFINITY
+        ttl: 3600s
