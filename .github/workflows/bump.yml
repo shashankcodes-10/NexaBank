@@ -2,7 +2,7 @@ name: Bump image in the deploy files
 
 # Writes the freshly pushed image into BOTH deploy methods and commits it to the branch:
 #   - helm/nexabank/values.yaml           (Helm mode)
-#   - k8s/app/nexabank-deployment.yaml    (raw-manifest mode)
+#   - k8s/app/nexabank_deployment.yml     (raw-manifest mode)
 # Updating both keeps them identical, so you can switch modes at any time. ArgoCD watches the
 # one you deployed, sees the commit and rolls the new image out to EKS.
 
@@ -18,7 +18,7 @@ on:
         default: helm/nexabank/values.yaml
       raw_file:
         type: string
-        default: k8s/app/nexabank-deployment.yaml
+        default: k8s/app/nexabank_deployment.yml
 
 permissions:
   contents: write
@@ -46,6 +46,7 @@ jobs:
           VALUES_FILE: ${{ inputs.values_file }}
         run: |
           set -euo pipefail
+          [ -f "$VALUES_FILE" ] || { echo "::error::$VALUES_FILE not found; fix the values_file input"; exit 1; }
           REPO="${IMAGE%:*}"
           TAG="${IMAGE##*:}"
           [ "$REPO" != "$IMAGE" ] || { echo "::error::image must look like repo:tag"; exit 1; }
@@ -64,7 +65,7 @@ jobs:
           RAW_FILE: ${{ inputs.raw_file }}
         run: |
           set -euo pipefail
-          if [ ! -f "$RAW_FILE" ]; then echo "No $RAW_FILE, skipping raw mode."; exit 0; fi
+          [ -f "$RAW_FILE" ] || { echo "::error::$RAW_FILE not found; fix the raw_file input"; exit 1; }
           sed -i -E "s|^([[:space:]]+image:[[:space:]]*).*(# managed by bump.yml \(image\))\$|\1${IMAGE} \2|" "$RAW_FILE"
           grep -q "image: ${IMAGE} # managed by bump.yml" "$RAW_FILE" || { echo "::error::image line was not updated in $RAW_FILE"; exit 1; }
           git --no-pager diff -- "$RAW_FILE"
@@ -77,15 +78,14 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo "Values already use ${IMAGE}, nothing to commit."
+          if git diff --quiet -- "$VALUES_FILE" "$RAW_FILE"; then
+            echo "Deploy files already use ${IMAGE}, nothing to commit."
             exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # scoped add: never commit anything but the values file
-          git add "$VALUES_FILE"
-          [ ! -f "$RAW_FILE" ] || git add "$RAW_FILE"
+          # scoped add: never commit anything but the two deploy files
+          git add "$VALUES_FILE" "$RAW_FILE"
           git commit -m "ci: deploy ${IMAGE##*:} [skip ci]"
 
           # another push may land meanwhile: rebase and retry
