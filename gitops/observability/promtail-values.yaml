@@ -1,0 +1,13 @@
+# Promtail: ships container logs from every node to Loki.
+# WARNING: Promtail is deprecated upstream (end of life). It still works, but gets no new features/fixes.
+# The replacement is Grafana Alloy; see DEPLOY.md section 11.
+config:
+  clients:
+    - url: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }
+
+serviceMonitor:
+  enabled: true

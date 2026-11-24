@@ -1,0 +1,29 @@
+# Tempo: trace storage. The OpenTelemetry Collector sends traces to tempo:4317 (OTLP gRPC).
+# without this the Service is named after the release and tempo.observability DNS fails
+fullnameOverride: tempo
+
+tempo:
+  retention: 72h
+  reportingEnabled: false
+  storage:
+    trace:
+      backend: local
+  receivers:
+    jaeger: null # not used; only OTLP is accepted
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 768Mi }
+
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClassName: gp3
+
+serviceMonitor:
+  enabled: true

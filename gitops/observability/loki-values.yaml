@@ -1,0 +1,55 @@
+# Loki: log storage. Single-binary mode with a local gp3 volume (fine for one project / a few GB of logs).
+# For production scale, use S3 object storage instead of the filesystem.
+fullnameOverride: loki # Service is `loki`, not <release>-loki
+
+deploymentMode: Monolithic
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 168h # 7 days
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: gp3
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 768Mi }
+
+# components not used in single-binary mode
+gateway:
+  enabled: false
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+sidecar:
+  rules:
+    enabled: false
+
+monitoring:
+  serviceMonitor:
+    enabled: true

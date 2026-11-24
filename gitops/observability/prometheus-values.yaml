@@ -1,0 +1,107 @@
+# Prometheus + Grafana + node-exporter + kube-state-metrics (+ cAdvisor via the kubelet).
+# Chart: prometheus-community/kube-prometheus-stack
+fullnameOverride: kps
+
+# Pick up every ServiceMonitor / PodMonitor / rule in the cluster (e.g. the app's PodMonitor),
+# not only the ones labelled with this Helm release.
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    retention: 7d
+    retentionSize: 8GB
+    resources:
+      requests: { cpu: 200m, memory: 800Mi }
+      limits: { memory: 1500Mi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 10Gi
+
+# no receivers configured (email/Slack), so it would only waste memory
+alertmanager:
+  enabled: false
+
+# node-exporter: one pod per node (CPU, memory, disk, network of the node)
+nodeExporter:
+  enabled: true
+kube-state-metrics:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+
+# cAdvisor (per-container CPU/memory/network) is built into the kubelet. This ServiceMonitor scrapes it,
+# so a separate cAdvisor DaemonSet is not needed.
+kubelet:
+  enabled: true
+  serviceMonitor:
+    cAdvisor: true
+
+# EKS control-plane components are managed by AWS and cannot be scraped
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeProxy: false
+    kubernetesSystemControllerManager: false
+    kubernetesSystemScheduler: false
+
+grafana:
+  fullnameOverride: grafana # Service is `grafana`: kubectl -n observability port-forward svc/grafana 3000:80
+  # admin login comes from the Secret built by gitops/external-secrets/grafana-externalsecret.yaml
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 200Mi }
+    limits: { memory: 500Mi }
+  # Prometheus datasource is provisioned by the chart (uid: prometheus). Loki and Tempo are added here
+  # and linked: log line -> trace, trace -> logs, trace -> service map.
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      access: proxy
+      url: http://loki.observability.svc.cluster.local:3100
+      jsonData:
+        derivedFields:
+          - name: TraceID
+            matcherRegex: 'trace_id=(\w+)'
+            url: '$${__value.raw}'
+            datasourceUid: tempo
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      access: proxy
+      url: http://tempo.observability.svc.cluster.local:3200
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: '-5m'
+          spanEndTimeShift: '5m'
+          customQuery: true
+          query: '{namespace="nexabank-ns"} |= "$${__trace.traceId}"'
+        serviceMap:
+          datasourceUid: prometheus
+        nodeGraph:
+          enabled: true

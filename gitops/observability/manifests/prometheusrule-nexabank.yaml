@@ -1,0 +1,61 @@
+# Alert rules. Alertmanager is disabled, so these show up in Grafana/Prometheus (Alerts) only.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nexabank
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: nexabank
+spec:
+  groups:
+    - name: nexabank-app
+      rules:
+        - alert: NexaBankNoReplicasAvailable
+          expr: kube_deployment_status_replicas_available{namespace="nexabank-ns",deployment="nexabank"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "NexaBank has no available pods"
+            runbook: "kubectl -n nexabank-ns get pods; kubectl -n nexabank-ns describe deploy nexabank"
+
+        - alert: NexaBankHigh5xxRate
+          expr: |
+            sum(rate(http_server_requests_seconds_count{namespace="nexabank-ns",status=~"5.."}[5m]))
+              /
+            sum(rate(http_server_requests_seconds_count{namespace="nexabank-ns"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "More than 5% of NexaBank requests return 5xx"
+            runbook: "Grafana -> Explore -> Tempo -> service.name=nexabank status=error"
+
+        - alert: NexaBankPodsCannotStart
+          expr: kube_pod_container_status_waiting_reason{namespace="nexabank-ns",reason="CreateContainerConfigError"} == 1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pods cannot start: nexabank-secret is probably not being synced"
+            runbook: "kubectl -n nexabank-ns describe externalsecret nexabank-secret"
+
+    - name: nexabank-ai
+      rules:
+        - alert: OllamaDown
+          expr: kube_deployment_status_replicas_available{namespace="nexabank-ns",deployment="ollama"} == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ollama has no ready pod (still pulling the model, or crashed)"
+            runbook: "kubectl -n nexabank-ns logs deploy/ollama"
+
+        - alert: StoragePending
+          expr: kube_persistentvolumeclaim_status_phase{namespace="nexabank-ns",phase="Pending"} == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "A PVC in nexabank-ns is stuck Pending"
+            runbook: "kubectl -n nexabank-ns describe pvc; check the gp3 StorageClass and the ebs-csi pods"
