@@ -1,6 +1,5 @@
 # Dependabot opens pull requests when a dependency has a newer version.
-# Important here: our workflows pin actions to commit SHAs, and Dependabot is what
-# keeps those SHAs from going stale (it bumps the SHA and the "# vX" comment).
+# Workflows pin actions to commit SHAs; Dependabot bumps the SHA and the "# vX" comment.
 version: 2
 
 updates:
@@ -9,7 +8,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 7      # wait 7 days before proposing brand-new releases
+      default-days: 7        # security updates ignore the cooldown
     open-pull-requests-limit: 5
 
   - package-ecosystem: maven
@@ -17,15 +16,27 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 7      # wait 7 days before proposing brand-new releases
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
-      # one PR for all minor/patch bumps instead of a PR per library
-      maven-minor-patch:
+      maven-minor-patch:     # one PR for all minor/patch bumps
         update-types: [minor, patch]
+    ignore:
+      # Spring Boot 4 is a migration project (Framework 7, Actuator/Micrometer, OTel agent);
+      # stay on 3.5.x patches and move to 4.x deliberately on its own branch
+      - dependency-name: "org.springframework.boot:*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: docker
+    directory: /backend      # base images in backend/Dockerfile
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
 
   - package-ecosystem: terraform
-    directories:               # plural: one entry per root module
+    directories:             # one entry per root module
       - /terraform
       - /terraform/bootstrap
     schedule:
@@ -36,10 +47,3 @@ updates:
     groups:
       terraform-minor-patch:
         update-types: [minor, patch]
-
-  - package-ecosystem: docker
-    directory: /backend        # wherever your Dockerfile lives
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 7      

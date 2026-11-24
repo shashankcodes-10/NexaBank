@@ -1,107 +1,97 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nexabank
-  labels:
-    app: nexabank
-spec:
-  # replicas omitted on purpose: the HPA owns the replica count
-  selector:
-    matchLabels:
-      app: nexabank
-  template:
-    metadata:
-      labels:
-        app: nexabank
-    spec:
-      terminationGracePeriodSeconds: 30
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
-      initContainers:
-        - name: wait-for-mysql
-          image: busybox:1.36
-          command:
-            - /bin/sh
-            - -c
-            - |
-              echo "Waiting for MySQL..."
-              attempts=0
-              until nc -z mysql-service 3306; do
-                attempts=$((attempts + 1))
-                if [ "$attempts" -ge 60 ]; then
-                  echo "MySQL connection timed out"
-                  exit 1
-                fi
-                sleep 5
-              done
-              echo "MySQL is reachable!"
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests: { memory: 32Mi, cpu: 50m }
-            limits: { memory: 64Mi, cpu: 100m }
-      containers:
-        - name: nexabank
-          image: shashank971/nexabank:latest # managed by bump.yml (image)
-          imagePullPolicy: IfNotPresent
-          securityContext:
-            runAsUser: 65532
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          ports:
-            - name: http
-              containerPort: 8080
-            - name: management
-              containerPort: 8081
-          envFrom:
-            - configMapRef:
-                name: nexabank-configmap
-            - secretRef:
-                name: nexabank-secret
-          env:
-            # POD_NAME must stay above the variable that uses it ($(POD_NAME))
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # --- OpenTelemetry: the Dockerfile sets the agent + exporter type, the endpoint is set here ---
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.observability.svc.cluster.local:4318"
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "deployment.environment=production,k8s.pod.name=$(POD_NAME),k8s.namespace.name=nexabank-ns"
-            # --- Metrics on a separate port (not exposed through the Service / Gateway) ---
-            - name: MANAGEMENT_SERVER_PORT
-              value: "8081"
-            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
-              value: "health,prometheus"
-            # --- Put trace/span ids in the log line so Loki <-> Tempo can be linked in Grafana ---
-            - name: LOGGING_PATTERN_CONSOLE
-              value: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} [trace_id=%X{trace_id} span_id=%X{span_id}] - %msg%n"
-          resources:
-            requests: { cpu: 250m, memory: 512Mi }
-            limits: { cpu: 500m, memory: 1Gi }
-          startupProbe:
-            httpGet:
-              path: /actuator/health/liveness
-              port: management
-            periodSeconds: 10
-            failureThreshold: 30
-          readinessProbe:
-            httpGet:
-              path: /actuator/health/readiness
-              port: management
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
-          livenessProbe:
-            httpGet:
-              path: /actuator/health/liveness
-              port: management
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
+name: Bump image in the deploy files
+
+# Writes the freshly pushed image into BOTH deploy methods and commits it to the branch:
+#   - helm/nexabank/values.yaml           (Helm mode)
+#   - k8s/app/nexabank_deployment.yml     (raw-manifest mode)
+# Updating both keeps them identical, so you can switch modes at any time. ArgoCD watches the
+# one you deployed, sees the commit and rolls the new image out to EKS.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Full image reference, e.g. shashank971/nexabank:sha-ab12cd3
+        required: true
+        type: string
+      values_file:
+        type: string
+        default: helm/nexabank/values.yaml
+      raw_file:
+        type: string
+        default: k8s/app/nexabank_deployment.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Update values and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # two quick pushes must not race each other on the same branch
+    concurrency:
+      group: bump-manifest
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0 # `git pull --rebase` below needs real history
+
+      # values.yaml has two marker lines: "# managed by bump.yml (repository)" and "(tag)"
+      - name: Update image in values file
+        env:
+          IMAGE: ${{ inputs.image }}
+          VALUES_FILE: ${{ inputs.values_file }}
+        run: |
+          set -euo pipefail
+          [ -f "$VALUES_FILE" ] || { echo "::error::$VALUES_FILE not found; fix the values_file input"; exit 1; }
+          REPO="${IMAGE%:*}"
+          TAG="${IMAGE##*:}"
+          [ "$REPO" != "$IMAGE" ] || { echo "::error::image must look like repo:tag"; exit 1; }
+          sed -i -E \
+            -e "s|^([[:space:]]+repository:[[:space:]]*).*(# managed by bump.yml \(repository\))\$|\1${REPO} \2|" \
+            -e "s|^([[:space:]]+tag:[[:space:]]*).*(# managed by bump.yml \(tag\))\$|\1\"${TAG}\" \2|" \
+            "$VALUES_FILE"
+          grep -q "repository: ${REPO} # managed by bump.yml" "$VALUES_FILE" || { echo "::error::repository line was not updated"; exit 1; }
+          grep -q "tag: \"${TAG}\" # managed by bump.yml" "$VALUES_FILE" || { echo "::error::tag line was not updated"; exit 1; }
+          git --no-pager diff -- "$VALUES_FILE"
+
+      # raw mode: the image line carries "# managed by bump.yml (image)"
+      - name: Update image in the raw manifest
+        env:
+          IMAGE: ${{ inputs.image }}
+          RAW_FILE: ${{ inputs.raw_file }}
+        run: |
+          set -euo pipefail
+          [ -f "$RAW_FILE" ] || { echo "::error::$RAW_FILE not found; fix the raw_file input"; exit 1; }
+          sed -i -E "s|^([[:space:]]+image:[[:space:]]*).*(# managed by bump.yml \(image\))\$|\1${IMAGE} \2|" "$RAW_FILE"
+          grep -q "image: ${IMAGE} # managed by bump.yml" "$RAW_FILE" || { echo "::error::image line was not updated in $RAW_FILE"; exit 1; }
+          git --no-pager diff -- "$RAW_FILE"
+
+      - name: Commit and push
+        env:
+          IMAGE: ${{ inputs.image }}
+          VALUES_FILE: ${{ inputs.values_file }}
+          RAW_FILE: ${{ inputs.raw_file }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- "$VALUES_FILE" "$RAW_FILE"; then
+            echo "Deploy files already use ${IMAGE}, nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # scoped add: never commit anything but the two deploy files
+          git add "$VALUES_FILE" "$RAW_FILE"
+          git commit -m "ci: deploy ${IMAGE##*:} [skip ci]"
+
+          # another push may land meanwhile: rebase and retry
+          for i in 1 2 3; do
+            git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH" && exit 0
+            echo "Push rejected (attempt ${i}); retrying..."
+            sleep $((i * 5))
+          done
+          exit 1
