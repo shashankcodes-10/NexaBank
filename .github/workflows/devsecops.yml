@@ -1,13 +1,14 @@
 name: DevSecOps
 
 on:
-  push:
-    branches: [main]
-    # only rebuild when code or the pipeline changes (the bump commit only touches k8s/)
-    paths:
-      - 'backend/**'
-      - '.github/workflows/**'
-      - 'sonar-project.properties'
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   # only rebuild when code or the pipeline changes (the bump commit only touches k8s/)
+  #   paths:
+  #     - 'backend/**'
+  #     - '.github/workflows/**'
+  #     - 'sonar-project.properties'
   pull_request:
     branches: [main]
   workflow_dispatch:
