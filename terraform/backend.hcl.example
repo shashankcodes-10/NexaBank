@@ -1,0 +1,10 @@
+# Generate it instead of typing it:
+#   terraform -chdir=bootstrap output -raw backend_hcl > backend.hcl
+bucket = "nexabank-tfstate-<your-account-id>-ap-south-1"
+key    = "nexabank/terraform.tfstate"
+region = "ap-south-1"
+
+encrypt = true
+
+# S3-native state locking (Terraform >= 1.11). No DynamoDB table needed.
+use_lockfile = true
