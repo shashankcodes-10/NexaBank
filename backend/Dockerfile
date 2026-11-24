@@ -34,9 +34,9 @@ COPY otel/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
 # Application configuration
 ENV OTEL_SERVICE_NAME=nexabank
 
-ENV OTEL_SERVICE_VERSION=1.0.0
-
-ENV OTEL_RESOURCE_ATTRIBUTES=deployment.environment=dev
+# service.version is a resource attribute (there is no OTEL_SERVICE_VERSION variable).
+# Kubernetes overrides this whole variable, see the note below.
+ENV OTEL_RESOURCE_ATTRIBUTES=deployment.environment=dev,service.version=1.0.0
 
 # OpenTelemetry configuration
 ENV OTEL_TRACES_EXPORTER=otlp
