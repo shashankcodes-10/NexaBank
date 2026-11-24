@@ -1,0 +1,42 @@
+# Staging first: production allows only 5 failed validations per hostname per hour.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: you@example.com   # configure:email
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          # the solver HTTPRoute is created in the CERTIFICATE's namespace, so the
+          # Certificate must live in nexabank-ns, next to the Gateway
+          gatewayHTTPRoute:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: nexabank-gateway
+                namespace: nexabank-ns
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: you@example.com   # configure:email
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          # the solver HTTPRoute is created in the CERTIFICATE's namespace, so the
+          # Certificate must live in nexabank-ns, next to the Gateway
+          gatewayHTTPRoute:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: nexabank-gateway
+                namespace: nexabank-ns
