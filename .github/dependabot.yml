@@ -23,3 +23,23 @@ updates:
       # one PR for all minor/patch bumps instead of a PR per library
       maven-minor-patch:
         update-types: [minor, patch]
+
+  - package-ecosystem: terraform
+    directories:               # plural: one entry per root module
+      - /terraform
+      - /terraform/bootstrap
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      terraform-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /backend        # wherever your Dockerfile lives
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7      
