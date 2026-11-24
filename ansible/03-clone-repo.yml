@@ -1,0 +1,28 @@
+---
+# Clones the NexaBank repo into the home folder.
+#
+#   ansible-playbook -i inventory.ini 03-clone-repo.yml
+#
+# repo_url in group_vars/nexabank.yml must be a repo YOU can push to: ArgoCD deploys
+# from Git, and the CI bump commits land there.
+
+- name: Clone the NexaBank repo
+  hosts: nexabank
+  become: true
+
+  tasks:
+    - name: Clone the repo
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "/home/{{ login_user }}/NexaBank"
+        version: "{{ repo_branch }}"
+        # false so a re-run never throws away local edits
+        update: false
+      become: true
+      become_user: "{{ login_user }}"
+
+    - name: Remind about git identity
+      ansible.builtin.debug:
+        msg: >-
+          Cloned to /home/{{ login_user }}/NexaBank. To push from this machine, log in with
+          `gh auth login` and set `git config --global user.name/user.email`.

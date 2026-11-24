@@ -1,0 +1,19 @@
+---
+# Every setting lives here, so all four playbooks read the same values.
+
+aws_region: us-west-2
+
+# The user you SSH in as. Ubuntu AMIs use `ubuntu`.
+login_user: ubuntu
+
+# Match this to cluster_version in terraform/terraform.tfvars (kubectl supports one minor of skew).
+kubectl_version: "1.35"
+
+# Leave EMPTY when the EC2 machine has an IAM role attached (see DEPLOY.md step 1). Safer.
+# Otherwise: ansible-vault encrypt_string 'AKIA...' --name aws_access_key
+aws_access_key: ""
+aws_secret_key: ""
+
+# Change to YOUR repo: ArgoCD deploys from Git and you must be able to push to it.
+repo_url: https://github.com/shashankcodes-10/NexaBank.git
+repo_branch: main
