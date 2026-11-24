@@ -1,0 +1,42 @@
+# OpenTelemetry Collector: receives the app's OTLP traces (from the Java agent in the Dockerfile) and forwards them to Tempo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-otel-collector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: "0.182.0"
+      helm:
+        releaseName: observability-otel-collector
+        valueFiles:
+          - $values/gitops/observability/otel-collector-values.yaml
+
+    - repoURL: https://github.com/shashankcodes-10/NexaBank.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # resources whose CRD arrives from another Application in the same wave: retry fixes the order
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 5m

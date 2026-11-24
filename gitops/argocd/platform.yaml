@@ -1,0 +1,23 @@
+# App-of-apps: applying this ONE Application makes ArgoCD create every Application in
+# gitops/argocd/platform/, in sync-wave order. (scripts/deploy.sh applies it.)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/shashankcodes-10/NexaBank.git
+    targetRevision: main
+    path: gitops/argocd/platform
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,47 @@
+# The application deployed from the Helm chart in helm/nexabank  (mode: helm).
+# Alternative: nexabank-raw.yaml (plain manifests). Apply ONE of the two, never both.
+# scripts/configure.sh edits the lines marked "configure:".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nexabank
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/shashankcodes-10/NexaBank.git
+    targetRevision: main
+    path: helm/nexabank
+    helm:
+      releaseName: nexabank
+      valuesObject:
+        gateway:
+          hostname: ""                          # configure:domain (empty = HTTP only)
+          tls:
+            enabled: false                      # configure:tls (true once hostname is set)
+            clusterIssuer: letsencrypt-staging  # switch to letsencrypt-prod after staging works
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nexabank-ns
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 5m

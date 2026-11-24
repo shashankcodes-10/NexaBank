@@ -1,0 +1,44 @@
+# Loki: log storage.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-loki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+
+  sources:
+    - repoURL: https://grafana-community.github.io/helm-charts
+      chart: loki
+      targetRevision: "21.4.3"
+      helm:
+        releaseName: observability-loki
+        valueFiles:
+          - $values/gitops/observability/loki-values.yaml
+
+    - repoURL: https://github.com/shashankcodes-10/NexaBank.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # big CRDs do not fit in a client-side apply (262144-byte annotation limit)
+      - ServerSideApply=true
+      # resources whose CRD arrives from another Application in the same wave: retry fixes the order
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 5m

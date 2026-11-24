@@ -1,0 +1,45 @@
+# The application deployed from plain manifests in k8s/  (mode: raw, the default).
+# Alternative: nexabank-helm.yaml (Helm chart). Apply ONE of the two, never both.
+# scripts/configure.sh edits the lines marked "configure:".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nexabank
+  namespace: argocd
+spec:
+  project: default
+
+  sources:
+    # everything except the Gateway
+    - repoURL: https://github.com/shashankcodes-10/NexaBank.git
+      targetRevision: main
+      path: k8s/app
+
+    # the Gateway + routes: k8s/gateway-http (no domain) or k8s/gateway-https (your domain)
+    - repoURL: https://github.com/shashankcodes-10/NexaBank.git
+      targetRevision: main
+      path: k8s/gateway-http # configure:gateway-path
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nexabank-ns
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 5m

@@ -1,0 +1,61 @@
+# cert-manager. It looks for the Gateway API CRDs only at STARTUP, so Envoy Gateway (deploy.sh) must be installed first.
+# If a Certificate sits Pending: kubectl -n cert-manager rollout restart deploy cert-manager
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: "v1.21.3"
+    helm:
+      valuesObject:
+        crds:
+          enabled: true
+          keep: true
+
+        # renders --enable-gateway-api
+        config:
+          apiVersion: controller.config.cert-manager.io/v1alpha1
+          kind: ControllerConfiguration
+          gatewayAPI:
+            enabled: true
+
+        # public resolvers for the HTTP-01 self-check (CoreDNS may cache a stale answer)
+        extraArgs:
+          - --acme-http01-solver-nameservers=8.8.8.8:53,1.1.1.1:53
+
+        resources:
+          requests: { cpu: 10m, memory: 64Mi }
+          limits: { cpu: 200m, memory: 256Mi }
+        webhook:
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+        cainjector:
+          resources:
+            requests: { cpu: 10m, memory: 128Mi }
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # big CRDs do not fit in a client-side apply (262144-byte annotation limit)
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 5m
