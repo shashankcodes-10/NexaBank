@@ -38,11 +38,11 @@ spec:
               done
               echo "MySQL is reachable!"
           securityContext:
-          runAsUser: 65532
-          runAsNonRoot: true
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
+            runAsUser: 65532
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests: { memory: 32Mi, cpu: 50m }
             limits: { memory: 64Mi, cpu: 100m }
