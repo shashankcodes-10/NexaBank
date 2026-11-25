@@ -1,5 +1,5 @@
 variable "aws_region" {
-  description = "AWS region for the cluster. Must match the region in gitops/external-secrets/cluster-secret-store.yaml (scripts/configure.sh keeps them in sync)."
+  description = "AWS region for the cluster and every AWS resource. Single source of truth: scripts read it from terraform.tfvars (or TF_VAR_aws_region); deploy.sh applies the External Secrets store with it."
   type        = string
   default     = "us-west-2"
 }

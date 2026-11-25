@@ -38,4 +38,3 @@ output "aws_region" {
   description = "Region of this deployment (single source of truth: var.aws_region)"
   value       = var.aws_region
 }
-

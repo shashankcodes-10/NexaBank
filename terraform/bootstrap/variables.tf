@@ -1,7 +1,7 @@
 variable "region" {
   description = "Region of the state bucket. Keep it equal to aws_region of the main config."
   type        = string
-  default     = "ap-south-1"
+  default     = "us-west-2"
 }
 
 variable "bucket_name" {
