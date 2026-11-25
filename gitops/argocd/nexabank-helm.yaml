@@ -17,9 +17,9 @@ spec:
       releaseName: nexabank
       valuesObject:
         gateway:
-          hostname: ""                          # configure:domain (empty = HTTP only)
+          hostname: "nexabank.shashankpipal.in"                          # configure:domain (empty = HTTP only)
           tls:
-            enabled: false                      # configure:tls (true once hostname is set)
+            enabled: true                      # configure:tls (true once hostname is set)
             clusterIssuer: letsencrypt-staging  # switch to letsencrypt-prod after staging works
 
   destination:
