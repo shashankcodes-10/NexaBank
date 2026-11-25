@@ -65,9 +65,12 @@ credentials), on a branch called `main` (or run `configure.sh --branch`).
 **Your image:** CI pushes `<dockerhub-user>/nexabank:sha-<7>`; set `image.repository` in
 `k8s/app/nexabank-deployment.yaml` (raw mode) or `helm/nexabank/values.yaml` (Helm mode) to yours; CI keeps both in step. The Docker Hub repo must be public (or add an image pull secret).
 
-**Region:** default is `ap-south-1`. Changing it touches five places; `scripts/configure.sh --region`
-does four of them (`terraform.tfvars`, secret store, Ansible; you do `aws configure set region` and the bootstrap
-`-var=region=`).
+**Region:** set it once, in `terraform/terraform.tfvars` (`aws_region`), or export `TF_VAR_aws_region`. The scripts
+read it from there; it is not stored anywhere in Git or ArgoCD (`deploy.sh` applies the External Secrets store
+with that region). Also pass the same value to bootstrap (`-var=region=<same>`) and `aws configure set region <same>`
+on the EC2 machine. `scripts/configure.sh --region` updates `terraform.tfvars` and the Ansible vars for you.
+A region change is a **rebuild**, not a move: run `./scripts/destroy.sh --bootstrap` in the old region first, apply
+again, then run `set-secrets.sh` (Secrets Manager secrets are regional).
 
 ---
 
@@ -97,7 +100,7 @@ and Secrets Manager secrets from here, so whatever identity it uses must be allo
 | Risk | If the machine or the keys leak, they work from anywhere until you delete them | Only usable from that instance |
 | Good for | Learning, quick start | Anything you will keep running; safer default |
 
-Either works with every script here. With keys: run `aws configure` on the machine (region `ap-south-1`) and
+Either works with every script here. With keys: run `aws configure` on the machine (region = your `aws_region`) and
 leave `aws_access_key` empty in `ansible/group_vars/nexabank.yml`, so no key ever sits in a file in Git.
 Delete or deactivate the access key when you are finished. With a role: leave `aws_access_key` empty too; the AWS CLI finds the role.
 
@@ -185,13 +188,14 @@ or Terraform state. External Secrets Operator turns them into Kubernetes Secrets
 | MySQL app username (default `nexabank`) and password | what the app connects with |
 | Grafana admin password | login to Grafana (user `admin`) |
 
-Any characters are fine. Pick strong, different passwords. No script? Same thing by hand:
+Any characters are fine. Pick strong, different passwords. No script? Same thing by hand
+(`$AWS_REGION` is set by the Ansible playbook; otherwise `export AWS_REGION=<your aws_region>` first):
 
 ```bash
-aws secretsmanager put-secret-value --secret-id nexabank/mysql --region ap-south-1 \
+aws secretsmanager put-secret-value --secret-id nexabank/mysql --region "$AWS_REGION" \
   --secret-string "$(jq -nc --arg r 'ROOT_PW' --arg u 'nexabank' --arg p 'APP_PW' \
       '{root_password:$r, username:$u, password:$p}')"
-aws secretsmanager put-secret-value --secret-id nexabank/grafana --region ap-south-1 \
+aws secretsmanager put-secret-value --secret-id nexabank/grafana --region "$AWS_REGION" \
   --secret-string "$(jq -nc --arg p 'GRAFANA_PW' '{username:"admin", password:$p}')"
 ```
 
@@ -418,10 +422,10 @@ LoadBalancer or PVC is left, uninstalls Envoy Gateway, drops ArgoCD from Terrafo
 **Nothing is billing when these are empty:**
 
 ```bash
-aws eks list-clusters --region ap-south-1
-aws ec2 describe-volumes --region ap-south-1 --filters Name=status,Values=available --query 'Volumes[].VolumeId'
-aws elbv2 describe-load-balancers --region ap-south-1 --query 'LoadBalancers[].LoadBalancerName'
-aws secretsmanager list-secrets --region ap-south-1 --query 'SecretList[].Name'
+aws eks list-clusters --region "$AWS_REGION"
+aws ec2 describe-volumes --region "$AWS_REGION" --filters Name=status,Values=available --query 'Volumes[].VolumeId'
+aws elbv2 describe-load-balancers --region "$AWS_REGION" --query 'LoadBalancers[].LoadBalancerName'
+aws secretsmanager list-secrets --region "$AWS_REGION" --query 'SecretList[].Name'
 ```
 
 ## 14. Troubleshooting
@@ -430,7 +434,7 @@ aws secretsmanager list-secrets --region ap-south-1 --query 'SecretList[].Name'
 | --- | --- |
 | `deploy.sh`: "repoURL differs" / "targetRevision" | `./scripts/configure.sh --repo USER/NexaBank --branch main`, commit, push |
 | ArgoCD `ComparisonError` / app `Unknown` | branch not pushed, or `repoURL`/`targetRevision` wrong. `kubectl -n argocd logs deploy/argocd-repo-server --tail=50`, then `kubectl -n argocd annotate app <name> argocd.argoproj.io/refresh=hard --overwrite` |
-| Pods `CreateContainerConfigError` > 2 min | `kubectl -n nexabank-ns describe externalsecret nexabank-secret`; `kubectl get clustersecretstore aws-secrets-manager -o yaml`; `kubectl -n external-secrets logs deploy/external-secrets`. Causes: step 6 not run; region in `cluster-secret-store.yaml` wrong (`ResourceNotFoundException`); Pod Identity missing (`AccessDeniedException`) |
+| Pods `CreateContainerConfigError` > 2 min | `kubectl -n nexabank-ns describe externalsecret nexabank-secret`; `kubectl get clustersecretstore aws-secrets-manager -o yaml`; `kubectl -n external-secrets logs deploy/external-secrets`. Causes: step 6 not run; `aws_region` in `terraform.tfvars` differs from the region the secrets were created in (`ResourceNotFoundException`; re-run `./scripts/deploy.sh`, it re-applies the store); Pod Identity missing (`AccessDeniedException`) |
 | PVC `Pending` | `kubectl get storageclass` (gp3 default?); `kubectl -n kube-system get pods | grep ebs-csi`; or the pod it waits for is unschedulable (`describe pod`) |
 | Pods `Pending` insufficient cpu/memory | nodes too small: raise `node_instance_type` / `node_desired_count` in `terraform.tfvars`, `terraform apply` |
 | Gateway has no address after 5 min | `kubectl -n nexabank-ns describe gateway nexabank-gateway`; `kubectl -n envoy-gateway-system get pods,svc`; public subnets need the `kubernetes.io/role/elb` tag (set in `vpc.tf`) |
