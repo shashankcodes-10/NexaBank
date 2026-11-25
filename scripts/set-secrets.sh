@@ -27,7 +27,7 @@ for a in "$@"; do
   esac
 done
 
-REGION="${REGION:-$(tfvar aws_region ap-south-1)}"
+REGION="$(get_region)"
 MYSQL_SECRET="${MYSQL_SECRET:-nexabank/mysql}"
 GRAFANA_SECRET="${GRAFANA_SECRET:-nexabank/grafana}"
 

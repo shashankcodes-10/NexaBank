@@ -24,7 +24,7 @@ done
 case "$MODE" in raw|helm) ;; *) die "--mode must be raw or helm" ;; esac
 APP_FILE="gitops/argocd/nexabank-$MODE.yaml"
 
-REGION="${REGION:-$(tfvar aws_region ap-south-1)}"
+REGION="$(get_region)"
 CLUSTER="${CLUSTER:-$(tfvar cluster_name nexabank-eks)}"
 EG_VERSION="${EG_VERSION:-v1.10.0}"
 MYSQL_SECRET="${MYSQL_SECRET:-nexabank/mysql}"
@@ -98,6 +98,11 @@ else
   warn "not ready: kubectl -n argocd get app external-secrets"
 fi
 
+say "ClusterSecretStore (region $REGION, taken from Terraform settings, not from Git)"
+sed "s|__REGION__|${REGION}|" scripts/templates/cluster-secret-store.yaml | kubectl apply -f - >/dev/null \
+  || die "could not apply the ClusterSecretStore. Is External Secrets installed? kubectl -n argocd get app external-secrets"
+ok "ClusterSecretStore applied for $REGION"
+
 say "Waiting for the ClusterSecretStore (proves region + Pod Identity + IAM policy in one check)"
 ready=""
 for _ in $(seq 1 60); do
@@ -109,7 +114,7 @@ done
 if [ "$ready" = "True" ]; then
   ok "ClusterSecretStore is Valid"
 else
-  warn "ClusterSecretStore is not Valid: check the region in gitops/external-secrets/cluster-secret-store.yaml and"
+  warn "ClusterSecretStore is not Valid: check aws_region in terraform/terraform.tfvars and"
   warn "  kubectl -n external-secrets logs deploy/external-secrets --tail=50"
 fi
 

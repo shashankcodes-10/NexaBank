@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Points the repo at YOUR GitHub repo / region / domain in one go (the "fork and rewire" step).
 #
-#   ./scripts/configure.sh --repo YOUR_USER/NexaBank [--branch main] [--region ap-south-1] \
+#   ./scripts/configure.sh --repo YOUR_USER/NexaBank [--branch main] [--region us-west-2] \
 #                          [--email you@example.com] [--domain nexabank.example.com]
 #
 # Safe to re-run. Then: git add -A && git commit && git push
@@ -49,9 +49,8 @@ if [ -n "$BRANCH" ]; then
 fi
 
 if [ -n "$REGION" ]; then
-  say "Region -> $REGION (5 places: tfvars, bootstrap, secret store, ansible, aws cli)"
+  say "Region -> $REGION (tfvars + ansible vars; the secret store is applied by deploy.sh from tfvars)"
   sedi "s#^(aws_region[[:space:]]*=[[:space:]]*).*#\1\"${REGION}\"#" terraform/terraform.tfvars
-  sedi "s|(region:[[:space:]]*)[a-z0-9-]+([[:space:]]*# configure:region)|\1${REGION}\2|" gitops/external-secrets/cluster-secret-store.yaml
   sedi "s#^(aws_region:[[:space:]]*).*#\1${REGION}#" ansible/group_vars/nexabank.yml
   ok "updated. Also run: aws configure set region ${REGION}; and apply bootstrap with -var=region=${REGION}"
 fi

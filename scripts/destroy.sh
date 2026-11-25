@@ -12,7 +12,7 @@ cd "$ROOT"
 # shellcheck source=scripts/lib.sh
 . scripts/lib.sh
 
-REGION="${REGION:-$(tfvar aws_region ap-south-1)}"
+REGION="$(get_region)"
 CLUSTER="${CLUSTER:-$(tfvar cluster_name nexabank-eks)}"
 WITH_BOOTSTRAP=0; [ "${1:-}" = "--bootstrap" ] && WITH_BOOTSTRAP=1
 

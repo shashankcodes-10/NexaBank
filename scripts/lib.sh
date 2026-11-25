@@ -27,3 +27,10 @@ wait_for() {
 normalize_repo() {
   sed -E 's#^(https?://|git@)##; s#^github\.com:#github.com/#; s#\.git$##; s#/$##' <<<"$1"
 }
+
+# get_region: the region comes from Terraform settings only. No hidden default.
+get_region() {
+  local r="${REGION:-${TF_VAR_aws_region:-$(tfvar aws_region)}}"
+  [ -n "$r" ] || die "no region: set aws_region in terraform/terraform.tfvars (or export TF_VAR_aws_region)"
+  echo "$r"
+}
