@@ -8,7 +8,7 @@ metadata:
   annotations:
     # cert-manager sees this and creates the Certificate + the nexabank-tls Secret.
     # Start with staging; switch to letsencrypt-prod once it works (DEPLOY.md section 10).
-    cert-manager.io/cluster-issuer: letsencrypt-staging # configure:issuer
+    cert-manager.io/cluster-issuer: letsencrypt-prod # configure:issuer
 spec:
   gatewayClassName: envoy
   listeners:
