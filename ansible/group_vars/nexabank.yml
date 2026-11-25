@@ -7,7 +7,7 @@ aws_region: us-west-2
 login_user: ubuntu
 
 # Match this to cluster_version in terraform/terraform.tfvars (kubectl supports one minor of skew).
-kubectl_version: "1.35"
+kubectl_version: "1.36"
 
 # Leave EMPTY when the EC2 machine has an IAM role attached (see DEPLOY.md step 1). Safer.
 # Otherwise: ansible-vault encrypt_string 'AKIA...' --name aws_access_key

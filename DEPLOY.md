@@ -63,7 +63,7 @@ in your region (EC2 console → Key Pairs → create, save the `.pem`, `chmod 40
 **Your Git repo:** this repo must be on GitHub under an account you can push to, public (or give ArgoCD
 credentials), on a branch called `main` (or run `configure.sh --branch`).
 **Your image:** CI pushes `<dockerhub-user>/nexabank:sha-<7>`; set `image.repository` in
-`k8s/app/nexabank-deployment.yaml` (raw mode) or `helm/nexabank/values.yaml` (Helm mode) to yours; CI keeps both in step. The Docker Hub repo must be public (or add an image pull secret).
+`k8s/app/nexabank_deployment.yml` (raw mode) or `helm/nexabank/values.yaml` (Helm mode) to yours; CI keeps both in step. The Docker Hub repo must be public (or add an image pull secret).
 
 **Region:** set it once, in `terraform/terraform.tfvars` (`aws_region`), or export `TF_VAR_aws_region`. The scripts
 read it from there; it is not stored anywhere in Git or ArgoCD (`deploy.sh` applies the External Secrets store
@@ -110,6 +110,15 @@ Delete or deactivate the access key when you are finished. With a role: leave `a
 > (the IAM user or the role) the cluster admin. If you later switch identity, `kubectl` stops working.
 
 ## 2. Install the tools with Ansible
+
+First install Ansible on the machine (a fresh Ubuntu instance has no package lists yet, so run `apt update` first):
+
+```bash
+sudo apt update
+sudo apt install -y ansible-core
+```
+
+If a download step fails with `Wrote only ... bytes`, `/tmp` is full. The playbook unpacks into `/var/tmp` for that reason; make sure you have the latest `01-install-tools.yml`.
 
 ```bash
 cd ansible
@@ -384,7 +393,7 @@ kubectl -n observability port-forward svc/grafana 3000:80          # http://loca
 - A Loki log line containing `trace_id=...` shows a **TraceID** button that opens the trace in Tempo; in a Tempo trace, *Logs for this span* jumps back.
 - Optional dashboards: Dashboards → New → Import → ID **4701** (JVM Micrometer).
 
-How the app is wired (environment variables in `k8s/app/nexabank-deployment.yaml` / `helm/nexabank/templates/nexabank-deployment.yaml`, **no code change**):
+How the app is wired (environment variables in `k8s/app/nexabank_deployment.yml` / `helm/nexabank/templates/nexabank-deployment.yaml`, **no code change**):
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` → the collector. Your Dockerfile installs the Java agent and sets the exporter type but no endpoint, so traces used to go to `localhost` and vanish.
 - `MANAGEMENT_SERVER_PORT=8081` + `health,prometheus`: metrics on a separate port that the Service and Gateway do **not** expose (the app's security config allows `/actuator/**` without login, so serving metrics on 8080 would make them public). Probes use 8081.
@@ -400,7 +409,7 @@ Only traces use OpenTelemetry (your Dockerfile sets metrics/logs exporters to `n
 ## 12. CI/CD
 
 Push to `main` → `devsecops.yml` builds, scans, pushes `<user>/nexabank:sha-<7>` → `bump.yml` commits the new tag to
-`k8s/app/nexabank-deployment.yaml` **and** `helm/nexabank/values.yaml` (`[skip ci]`) → ArgoCD rolls it out. Roll back by reverting that commit.
+`k8s/app/nexabank_deployment.yml` **and** `helm/nexabank/values.yaml` (`[skip ci]`) → ArgoCD rolls it out. Roll back by reverting that commit.
 If `main` is branch-protected, allow `github-actions[bot]` to push. `terraform-ci.yml` lints `terraform/` on changes.
 Never `kubectl edit` managed resources: `selfHeal` reverts them within minutes. Commit and push instead.
 

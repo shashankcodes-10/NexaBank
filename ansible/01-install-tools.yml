@@ -13,9 +13,18 @@
 
   vars:
     # Ansible says x86_64 / aarch64; these downloads say amd64 / arm64.
-    go_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+    go_arch: "{{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }}"
+    # Work folder for downloads. NOT /tmp: on Ubuntu 26.04 /tmp is RAM-backed (tmpfs) and a small EC2
+    # instance runs out of space there while unpacking the AWS CLI (about 0.5 GB), Helm and gh.
+    tools_tmp: /var/tmp/nexabank-tools
 
   tasks:
+    - name: Create the work folder (on disk, not tmpfs)
+      ansible.builtin.file:
+        path: "{{ tools_tmp }}"
+        state: directory
+        mode: "0755"
+
     - name: Install what Ubuntu already ships
       ansible.builtin.apt:
         name:
@@ -33,20 +42,20 @@
     # Every kubectl call against EKS needs that, so we install v2 from AWS.
     - name: Download the AWS CLI
       ansible.builtin.get_url:
-        url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip"
-        dest: /tmp/awscli.zip
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_facts['architecture'] }}.zip"
+        dest: "{{ tools_tmp }}/awscli.zip"
         mode: "0644"
 
     - name: Unzip the AWS CLI
       ansible.builtin.unarchive:
-        src: /tmp/awscli.zip
-        dest: /tmp
+        src: "{{ tools_tmp }}/awscli.zip"
+        dest: "{{ tools_tmp }}"
         remote_src: true
-        creates: /tmp/aws/install
+        creates: "{{ tools_tmp }}/aws/install"
 
     - name: Install the AWS CLI
       ansible.builtin.command:
-        cmd: /tmp/aws/install --update
+        cmd: "{{ tools_tmp }}/aws/install --update"
         creates: /usr/local/bin/aws
 
     # ------------------------------------------------------------ terraform
@@ -93,13 +102,13 @@
     - name: Unpack Helm
       ansible.builtin.unarchive:
         src: "https://get.helm.sh/helm-{{ helm_release.content | trim }}-linux-{{ go_arch }}.tar.gz"
-        dest: /tmp
+        dest: "{{ tools_tmp }}"
         remote_src: true
-        creates: "/tmp/linux-{{ go_arch }}/helm"
+        creates: "{{ tools_tmp }}/linux-{{ go_arch }}/helm"
 
     - name: Install Helm
       ansible.builtin.copy:
-        src: "/tmp/linux-{{ go_arch }}/helm"
+        src: "{{ tools_tmp }}/linux-{{ go_arch }}/helm"
         dest: /usr/local/bin/helm
         mode: "0755"
         remote_src: true
@@ -121,13 +130,20 @@
     - name: Unpack the GitHub CLI
       ansible.builtin.unarchive:
         src: "https://github.com/cli/cli/releases/download/{{ gh_tag }}/gh_{{ gh_ver }}_linux_{{ go_arch }}.tar.gz"
-        dest: /tmp
+        dest: "{{ tools_tmp }}"
         remote_src: true
-        creates: "/tmp/gh_{{ gh_ver }}_linux_{{ go_arch }}/bin/gh"
+        creates: "{{ tools_tmp }}/gh_{{ gh_ver }}_linux_{{ go_arch }}/bin/gh"
 
     - name: Install the GitHub CLI
       ansible.builtin.copy:
-        src: "/tmp/gh_{{ gh_ver }}_linux_{{ go_arch }}/bin/gh"
+        src: "{{ tools_tmp }}/gh_{{ gh_ver }}_linux_{{ go_arch }}/bin/gh"
         dest: /usr/local/bin/gh
         mode: "0755"
         remote_src: true
+
+    # ------------------------------------------------------------- cleanup
+
+    - name: Remove the downloads (the tools are installed in /usr/local/bin)
+      ansible.builtin.file:
+        path: "{{ tools_tmp }}"
+        state: absent
