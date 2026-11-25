@@ -18,7 +18,7 @@ spec:
     # the Gateway + routes: k8s/gateway-http (no domain) or k8s/gateway-https (your domain)
     - repoURL: https://github.com/shashankcodes-10/NexaBank.git
       targetRevision: main
-      path: k8s/gateway-http # configure:gateway-path
+      path: k8s/gateway-https # configure:gateway-path
 
   destination:
     server: https://kubernetes.default.svc

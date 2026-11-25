@@ -21,7 +21,7 @@ spec:
     - name: https
       protocol: HTTPS
       port: 443
-      hostname: nexabank.example.com # configure:domain
+      hostname: nexabank.shashankpipal.in # configure:domain
       tls:
         mode: Terminate
         certificateRefs:
@@ -38,7 +38,7 @@ metadata:
   name: nexabank-route
 spec:
   hostnames:
-    - nexabank.example.com # configure:domain
+    - nexabank.shashankpipal.in # configure:domain
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
@@ -64,7 +64,7 @@ metadata:
   name: nexabank-http-redirect
 spec:
   hostnames:
-    - nexabank.example.com # configure:domain
+    - nexabank.shashankpipal.in # configure:domain
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
