@@ -37,7 +37,7 @@ module "external_secrets_pod_identity" {
     this = {
       cluster_name = module.eks.cluster_name
       namespace    = "external-secrets"
-      # must match the ServiceAccount created by the ESO chart (gitops/argocd/platform/external-secrets.yaml)
+      # must match the ServiceAccount created by the ESO chart (gitops/argocd/platform/external-secrets.yml)
       service_account = "external-secrets"
     }
   }

@@ -1,8 +1,8 @@
-# Promtail: ships container logs to Loki. DEPRECATED upstream (end of life), kept because requested; see DEPLOY.md for Grafana Alloy.
+# OpenTelemetry Collector: receives the app's OTLP traces (from the Java agent in the Dockerfile) and forwards them to Tempo.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: observability-promtail
+  name: observability-otel-collector
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
@@ -10,13 +10,13 @@ spec:
   project: default
 
   sources:
-    - repoURL: https://grafana.github.io/helm-charts
-      chart: promtail
-      targetRevision: "6.17.1"
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: "0.182.0"
       helm:
-        releaseName: observability-promtail
+        releaseName: observability-otel-collector
         valueFiles:
-          - $values/gitops/observability/promtail-values.yaml
+          - $values/gitops/observability/otel-collector-values.yml
 
     - repoURL: https://github.com/shashankcodes-10/NexaBank.git
       targetRevision: main

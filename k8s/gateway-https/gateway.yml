@@ -1,4 +1,4 @@
-# HTTPS on your own domain. Used when nexabank-raw.yaml points its gateway path here
+# HTTPS on your own domain. Used when nexabank-raw.yml points its gateway path here
 # (scripts/configure.sh --domain does that and fills in the hostname below).
 # Port 80 stays open: Let's Encrypt validates through it, and it redirects to HTTPS.
 apiVersion: gateway.networking.k8s.io/v1

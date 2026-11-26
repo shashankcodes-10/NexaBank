@@ -1,22 +1,22 @@
-# Loki: log storage.
+# Promtail: ships container logs to Loki. DEPRECATED upstream (end of life), kept because requested; see DEPLOY.md for Grafana Alloy.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: observability-loki
+  name: observability-promtail
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   project: default
 
   sources:
-    - repoURL: https://grafana-community.github.io/helm-charts
-      chart: loki
-      targetRevision: "21.4.3"
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: promtail
+      targetRevision: "6.17.1"
       helm:
-        releaseName: observability-loki
+        releaseName: observability-promtail
         valueFiles:
-          - $values/gitops/observability/loki-values.yaml
+          - $values/gitops/observability/promtail-values.yml
 
     - repoURL: https://github.com/shashankcodes-10/NexaBank.git
       targetRevision: main
@@ -32,8 +32,6 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      # big CRDs do not fit in a client-side apply (262144-byte annotation limit)
-      - ServerSideApply=true
       # resources whose CRD arrives from another Application in the same wave: retry fixes the order
       - SkipDryRunOnMissingResource=true
     retry:

@@ -1,8 +1,8 @@
-# Tempo: trace storage.
+# Prometheus + Operator + Grafana + node-exporter + kube-state-metrics. cAdvisor is scraped from the kubelet.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: observability-tempo
+  name: observability-prometheus
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -10,13 +10,13 @@ spec:
   project: default
 
   sources:
-    - repoURL: https://grafana-community.github.io/helm-charts
-      chart: tempo
-      targetRevision: "3.2.1"
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: "93.9.0"
       helm:
-        releaseName: observability-tempo
+        releaseName: observability-prometheus
         valueFiles:
-          - $values/gitops/observability/tempo-values.yaml
+          - $values/gitops/observability/prometheus-values.yml
 
     - repoURL: https://github.com/shashankcodes-10/NexaBank.git
       targetRevision: main
@@ -34,8 +34,6 @@ spec:
       - CreateNamespace=true
       # big CRDs do not fit in a client-side apply (262144-byte annotation limit)
       - ServerSideApply=true
-      # resources whose CRD arrives from another Application in the same wave: retry fixes the order
-      - SkipDryRunOnMissingResource=true
     retry:
       limit: 10
       backoff:

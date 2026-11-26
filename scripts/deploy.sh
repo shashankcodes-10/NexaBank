@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$MODE" in raw|helm) ;; *) die "--mode must be raw or helm" ;; esac
-APP_FILE="gitops/argocd/nexabank-$MODE.yaml"
+APP_FILE="gitops/argocd/nexabank-$MODE.yml"
 
 REGION="$(get_region)"
 CLUSTER="${CLUSTER:-$(tfvar cluster_name nexabank-eks)}"
@@ -32,6 +32,7 @@ GRAFANA_SECRET="${GRAFANA_SECRET:-nexabank/grafana}"
 
 # --- 0. Preflight: the same checks DEPLOY.md calls the HARD GATE -------------------------
 say "Preflight (app mode: $MODE)"
+bash scripts/check-yml.sh
 [ -f "$APP_FILE" ] || die "missing $APP_FILE"
 
 for bin in kubectl helm aws git; do
@@ -82,12 +83,12 @@ helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
   --wait --timeout 10m >/dev/null
 ok "controller ready (also installed the Gateway API CRDs)"
 
-kubectl apply -f gitops/gateway/gatewayclass.yaml >/dev/null
+kubectl apply -f gitops/gateway/gatewayclass.yml >/dev/null
 ok "GatewayClass 'envoy' applied (AWS NLB)"
 
 # --- 2. Platform (app-of-apps) ----------------------------------------------------------
 say "Platform: External Secrets, cert-manager, Prometheus, Grafana, Loki, Tempo, Promtail, OTel"
-kubectl apply -f gitops/argocd/platform.yaml >/dev/null
+kubectl apply -f gitops/argocd/platform.yml >/dev/null
 ok "app-of-apps applied: ArgoCD is now creating its children in sync-wave order"
 
 say "Waiting for External Secrets Operator"
@@ -99,7 +100,7 @@ else
 fi
 
 say "ClusterSecretStore (region $REGION, taken from Terraform settings, not from Git)"
-sed "s|__REGION__|${REGION}|" scripts/templates/cluster-secret-store.yaml | kubectl apply -f - >/dev/null \
+sed "s|__REGION__|${REGION}|" scripts/templates/cluster-secret-store.yml | kubectl apply -f - >/dev/null \
   || die "could not apply the ClusterSecretStore. Is External Secrets installed? kubectl -n argocd get app external-secrets"
 ok "ClusterSecretStore applied for $REGION"
 

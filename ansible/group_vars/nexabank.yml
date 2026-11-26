@@ -17,3 +17,9 @@ aws_secret_key: ""
 # Change to YOUR repo: ArgoCD deploys from Git and you must be able to push to it.
 repo_url: https://github.com/shashankcodes-10/NexaBank.git
 repo_branch: main
+
+# Git identity for commits made ON the EC2 machine (set once by 03-clone-repo.yml, never asked again).
+# The machine commits when you run configure.sh / set your domain / fix a manifest, and pushes so ArgoCD can see it.
+# Use the email of your GitHub account so the commits are linked to you.
+git_user_name: "Shashank Pipal"
+git_user_email: "u10shashank@gmail.com"

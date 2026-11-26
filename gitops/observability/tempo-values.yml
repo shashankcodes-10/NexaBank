@@ -9,7 +9,8 @@ tempo:
     trace:
       backend: local
   receivers:
-    jaeger: null # not used; only OTLP is accepted
+    # Do NOT set jaeger: null. The chart's Service template reads receivers.jaeger.protocols.*
+    # and fails to render without them. The chart's jaeger defaults stay (unused, in-cluster only).
     otlp:
       protocols:
         grpc:

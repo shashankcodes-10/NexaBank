@@ -25,6 +25,15 @@ loki:
     retention_enabled: true
     delete_request_store: filesystem
 
+# Monolithic mode: the chart's scalable components default to 3 replicas each and the chart
+# refuses to render when both are on. Zero them explicitly.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
 singleBinary:
   replicas: 1
   persistence:

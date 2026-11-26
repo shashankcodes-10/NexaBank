@@ -24,7 +24,7 @@ What runs where:
 | Cloud | Terraform | VPC, EKS, EBS CSI + gp3, Pod Identity roles, secret containers, ArgoCD |
 | Gateway | `deploy.sh` (Helm) | Envoy Gateway → creates the AWS load balancer |
 | Platform | ArgoCD, `gitops/argocd/platform/` | External Secrets, cert-manager, Prometheus, Grafana, node-exporter, Loki, Promtail, Tempo, OpenTelemetry Collector |
-| App | ArgoCD, `gitops/argocd/nexabank-raw.yaml` (default) or `nexabank-helm.yaml` | App, MySQL, Ollama, HPA, Gateway/routes: from plain manifests in `k8s/` or the Helm chart in `helm/nexabank` (same result, see below) |
+| App | ArgoCD, `gitops/argocd/nexabank-raw.yml` (default) or `nexabank-helm.yml` | App, MySQL, Ollama, HPA, Gateway/routes: from plain manifests in `k8s/` or the Helm chart in `helm/nexabank` (same result, see below) |
 
 Platform apps arrive in **sync waves**:
 
@@ -41,14 +41,14 @@ Platform apps arrive in **sync waves**:
 ansible/              EC2 machine setup (01 tools, 02 aws, 03 clone, 04 verify, site.yml)
 terraform/bootstrap/  the state bucket (local state)
 terraform/            the cluster (state in S3)
-gitops/argocd/        platform.yaml (app-of-apps), nexabank-raw.yaml, nexabank-helm.yaml, platform/*.yaml (one per component)
+gitops/argocd/        platform.yml (app-of-apps), nexabank-raw.yml, nexabank-helm.yml, platform/*.yml (one per component)
 gitops/gateway/       GatewayClass + EnvoyProxy (NLB)
 gitops/cert-manager/  Let's Encrypt issuers
 gitops/external-secrets/  ClusterSecretStore + Grafana ExternalSecret
 gitops/observability/ Helm values for every observability tool + alert rules
 k8s/                  the application as plain manifests (app/, gateway-http/, gateway-https/)
 helm/nexabank/        the same application as a Helm chart
-scripts/              configure.sh · set-secrets.sh · deploy.sh · destroy.sh
+scripts/              configure.sh · set-secrets.sh · deploy.sh · destroy.sh · check-yml.sh
 .github/workflows/    CI (devsecops, docker push, bump, terraform-ci ...)
 ```
 
@@ -133,10 +133,28 @@ and verifies everything. **You know it worked when** `04-verify` prints a versio
 
 ## 3. Log in and configure the repo
 
+### One-time Git setup (you do this once, on this machine)
+
+This machine **commits and pushes** during the deployment: `configure.sh` rewrites repo URL, region, domain and
+email in the repo, and ArgoCD only sees what is on GitHub. So Git needs to know who you are and be allowed to push.
+You are asked for this once; nothing later repeats it.
+
+| Part | How | When |
+|---|---|---|
+| Name + email | Ansible set them in step 2 from `git_user_name` / `git_user_email` in `ansible/group_vars/nexabank.yml` (edit those two lines **before** running `03-clone-repo.yml`). Without Ansible: `git config --global user.name "You"` and `git config --global user.email "you@example.com"` | once |
+| GitHub login | `gh auth login` (GitHub.com, HTTPS, "Login with a web browser" or paste a token), then `gh auth setup-git` | once |
+| Token scopes (if you paste one) | `repo` and `workflow` (workflow is needed because CI files live in `.github/workflows/`) | once |
+
+Check it worked: `git config user.email && gh auth status`. Both stay saved in `~/.gitconfig` and `~/.config/gh`.
+
+CI also commits to `main` (the image-tag bump), so your machine can be behind. Ansible sets `pull.rebase true`;
+if a push is rejected, run `git pull --rebase` and push again.
+
+### Configure and push
+
 ```bash
 ssh -i ~/.ssh/<key>.pem ubuntu@<ec2-ip>
 cd NexaBank
-gh auth login && git config --global user.name "You" && git config --global user.email "you@example.com"
 
 ./scripts/configure.sh --repo <your-github-user>/NexaBank          # + --region / --domain / --email if needed
 terraform fmt -recursive terraform                                 # once, so terraform-ci stays green
@@ -147,6 +165,15 @@ git add -A && git commit -m "configure for my environment" && git push -u origin
 (optionally) region, Let's Encrypt email and domain. ArgoCD syncs from whatever `repoURL` says: if it
 still points elsewhere your pushes never reach the cluster (the single most common problem; `deploy.sh`
 refuses to run in that state).
+
+### File naming: `.yml` only
+
+Every YAML file in this repo ends in `.yml`. The scripts and ArgoCD Applications name files explicitly
+(`k8s/gateway-https/gateway.yml`, `gitops/argocd/nexabank-raw.yml`, ...). A file named `.yaml` is invisible to
+them: that is what stopped HTTPS from switching on (`configure.sh` could not find `gateway.yml`'s `.yaml` twin).
+`configure.sh` and `deploy.sh` now run `scripts/check-yml.sh` first and stop with the list of offenders; the
+`yml-naming` workflow does the same on every push. `./scripts/check-yml.sh --fix` renames strays with `git mv`.
+The only `.yaml` files allowed are Helm's own: `helm/nexabank/Chart.yaml` and `helm/nexabank/values.yaml`.
 
 ## 4. Create the state bucket
 
@@ -264,9 +291,9 @@ Both are in the repo and deploy the **same** thing (same resources, same names).
 
 For one app in one environment, plain manifests are simpler: choose them. Choose Helm if you will run
 several environments or want to tune the app through one values file. The platform tools (Prometheus,
-Loki, cert-manager...) are Helm charts in both cases: ArgoCD installs them and `gitops/observability/*-values.yaml` sets them.
+Loki, cert-manager...) are Helm charts in both cases: ArgoCD installs them and `gitops/observability/*-values.yml` sets them.
 
-**Switching later** is safe: apply the other Application (`kubectl apply -f gitops/argocd/nexabank-helm.yaml`). It has the
+**Switching later** is safe: apply the other Application (`kubectl apply -f gitops/argocd/nexabank-helm.yml`). It has the
 same name and creates the same resources, so ArgoCD just takes them over. Never apply both files. `bump.yml` updates both
 deploy files on every build so they never drift. (Configure HTTPS in the mode you use; `configure.sh --domain` updates both.)
 
@@ -274,10 +301,10 @@ It is idempotent (safe to re-run after fixing something) and does this:
 
 | # | Step | Manual equivalent |
 | --- | --- | --- |
-| 1 | Envoy Gateway + GatewayClass `envoy` (NLB) | `helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm --version v1.10.0 -n envoy-gateway-system --create-namespace --wait` then `kubectl apply -f gitops/gateway/gatewayclass.yaml` |
-| 2 | Platform app-of-apps | `kubectl apply -f gitops/argocd/platform.yaml` |
+| 1 | Envoy Gateway + GatewayClass `envoy` (NLB) | `helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm --version v1.10.0 -n envoy-gateway-system --create-namespace --wait` then `kubectl apply -f gitops/gateway/gatewayclass.yml` |
+| 2 | Platform app-of-apps | `kubectl apply -f gitops/argocd/platform.yml` |
 | 3 | Waits for ESO, the `ClusterSecretStore`, cert-manager | |
-| 4 | The application | `kubectl apply -f gitops/argocd/nexabank-raw.yaml` (or `nexabank-helm.yaml` with `--mode helm`) |
+| 4 | The application | `kubectl apply -f gitops/argocd/nexabank-raw.yml` (or `nexabank-helm.yml` with `--mode helm`) |
 | 5 | Waits, prints status and the load balancer address | |
 
 Envoy Gateway goes first because it installs the Gateway API CRDs, and cert-manager only checks for them at startup.
@@ -331,11 +358,11 @@ Order matters: the DNS record cannot exist before the load balancer does, and th
    ```bash
    ./scripts/configure.sh --domain nexabank.example.com --email you@example.com
    git add -A && git commit -m "enable https" && git push
-   kubectl apply -f gitops/argocd/nexabank-raw.yaml        # or nexabank-helm.yaml in Helm mode
+   kubectl apply -f gitops/argocd/nexabank-raw.yml        # or nexabank-helm.yml in Helm mode
    kubectl -n argocd annotate app nexabank argocd.argoproj.io/refresh=hard --overwrite
    kubectl -n argocd annotate app cert-manager-config argocd.argoproj.io/refresh=hard --overwrite
    ```
-   (Raw mode: this fills in `k8s/gateway-https/gateway.yaml` and points the Application at that folder instead of `k8s/gateway-http`.)
+   (Raw mode: this fills in `k8s/gateway-https/gateway.yml` and points the Application at that folder instead of `k8s/gateway-http`.)
 2. Get the hostname and create the DNS record at your DNS provider:
    ```bash
    kubectl -n nexabank-ns get gateway nexabank-gateway -o jsonpath='{.status.addresses[0].value}'; echo
@@ -353,10 +380,10 @@ Order matters: the DNS record cannot exist before the load balancer does, and th
    kubectl -n cert-manager get cm cert-manager -o jsonpath='{.data.config\.yaml}'   # must contain gatewayAPI: enabled: true
    ```
    If that flag is missing: `kubectl -n cert-manager rollout restart deploy cert-manager`.
-4. Switch to a trusted certificate: change the issuer to `letsencrypt-prod` (raw mode: `cert-manager.io/cluster-issuer` in `k8s/gateway-https/gateway.yaml`; Helm mode: `clusterIssuer` in `gitops/argocd/nexabank-helm.yaml`), then
+4. Switch to a trusted certificate: change the issuer to `letsencrypt-prod` (raw mode: `cert-manager.io/cluster-issuer` in `k8s/gateway-https/gateway.yml`; Helm mode: `clusterIssuer` in `gitops/argocd/nexabank-helm.yml`), then
    ```bash
    git add -A && git commit -m "use production certificate" && git push
-   kubectl apply -f gitops/argocd/nexabank-raw.yaml        # or nexabank-helm.yaml
+   kubectl apply -f gitops/argocd/nexabank-raw.yml        # or nexabank-helm.yml
    kubectl -n nexabank-ns delete certificate nexabank-tls --ignore-not-found
    kubectl -n nexabank-ns delete secret nexabank-tls --ignore-not-found
    kubectl -n nexabank-ns get certificate -w
@@ -393,7 +420,7 @@ kubectl -n observability port-forward svc/grafana 3000:80          # http://loca
 - A Loki log line containing `trace_id=...` shows a **TraceID** button that opens the trace in Tempo; in a Tempo trace, *Logs for this span* jumps back.
 - Optional dashboards: Dashboards → New → Import → ID **4701** (JVM Micrometer).
 
-How the app is wired (environment variables in `k8s/app/nexabank_deployment.yml` / `helm/nexabank/templates/nexabank-deployment.yaml`, **no code change**):
+How the app is wired (environment variables in `k8s/app/nexabank_deployment.yml` / `helm/nexabank/templates/nexabank-deployment.yml`, **no code change**):
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` → the collector. Your Dockerfile installs the Java agent and sets the exporter type but no endpoint, so traces used to go to `localhost` and vanish.
 - `MANAGEMENT_SERVER_PORT=8081` + `health,prometheus`: metrics on a separate port that the Service and Gateway do **not** expose (the app's security config allows `/actuator/**` without login, so serving metrics on 8080 would make them public). Probes use 8081.
@@ -404,7 +431,7 @@ Only traces use OpenTelemetry (your Dockerfile sets metrics/logs exporters to `n
 > **Promtail is deprecated** upstream (end of life). It is here because it was requested and works today.
 > The replacement is Grafana Alloy: add an Application for the `grafana/alloy` chart with a `loki.source.kubernetes`
 > + `loki.write` pipeline to `http://loki.observability.svc.cluster.local:3100/loki/api/v1/push`, confirm logs arrive,
-> then delete `gitops/argocd/platform/observability-promtail.yaml`.
+> then delete `gitops/argocd/platform/observability-promtail.yml`.
 
 ## 12. CI/CD
 
@@ -415,15 +442,42 @@ Never `kubectl edit` managed resources: `selfHeal` reverts them within minutes. 
 
 ## 13. Tear it all down
 
+There are **two layers**, and they are destroyed separately:
+
+| Layer | Folder | State | Removed by |
+|---|---|---|---|
+| main (cluster, VPC, ArgoCD, secrets) | `terraform/` | in the S3 bucket | `./scripts/destroy.sh` |
+| bootstrap (the S3 state bucket itself) | `terraform/bootstrap/` | **local file** `terraform/bootstrap/terraform.tfstate` | `./scripts/destroy.sh --bootstrap` or `--bootstrap-only` |
+
 The load balancer and the EBS volumes were not created by Terraform, so `terraform destroy` alone stalls on the VPC.
 
 ```bash
-./scripts/destroy.sh               # asks you to type the cluster name; add --bootstrap to also delete the state bucket
+./scripts/destroy.sh                   # main only; the state bucket stays (typical: you will deploy again)
+./scripts/destroy.sh --bootstrap       # main, then the state bucket
+./scripts/destroy.sh --bootstrap-only  # main is already gone: just the state bucket
 ```
 
-It deletes the ArgoCD applications, then the namespaces (which removes the NLB and the volumes), waits until no
-LoadBalancer or PVC is left, uninstalls Envoy Gateway, drops ArgoCD from Terraform state, checks for orphans, runs
-`terraform destroy`, and lists leftover EBS volumes. Afterwards:
+All three ask you to type the cluster name. What they do:
+
+- **main**: deletes the ArgoCD applications, then the namespaces (which removes the NLB and the volumes), waits until no
+  LoadBalancer or PVC is left, uninstalls Envoy Gateway, drops ArgoCD from Terraform state, checks for orphans, runs
+  `terraform destroy`, lists leftover EBS volumes. If the cluster is already gone it skips the Kubernetes part and still
+  runs `terraform destroy` for whatever the state holds.
+- **bootstrap**: refuses to run while the main state still lists resources (deleting the bucket would orphan them), then
+  runs `terraform destroy` in `terraform/bootstrap` (the bucket has `force_destroy = true`, so its versions go too) and
+  removes `terraform/backend.hcl`. There is **no DynamoDB table**: locking is S3-native.
+
+The bootstrap state is a file on the machine that created the bucket. If you run the teardown from another machine,
+or lost `terraform/bootstrap/terraform.tfstate`, the script prints the one-line `terraform import` that re-adopts the bucket;
+run it and the script again.
+
+By hand (equivalent to `--bootstrap-only`):
+
+```bash
+cd terraform/bootstrap && terraform init && terraform destroy -var="region=$AWS_REGION"
+```
+
+Afterwards:
 
 - delete the **DNS CNAME** for your domain (a CNAME to a released AWS name can be taken over);
 - terminate the EC2 machine and delete its security group/role yourself (they were created by hand).
@@ -435,6 +489,7 @@ aws eks list-clusters --region "$AWS_REGION"
 aws ec2 describe-volumes --region "$AWS_REGION" --filters Name=status,Values=available --query 'Volumes[].VolumeId'
 aws elbv2 describe-load-balancers --region "$AWS_REGION" --query 'LoadBalancers[].LoadBalancerName'
 aws secretsmanager list-secrets --region "$AWS_REGION" --query 'SecretList[].Name'
+aws s3api list-buckets --query "Buckets[?starts_with(Name, 'nexabank-tfstate')].Name"    # [] after --bootstrap
 ```
 
 ## 14. Troubleshooting
@@ -450,6 +505,9 @@ aws secretsmanager list-secrets --region "$AWS_REGION" --query 'SecretList[].Nam
 | App Application `ComparisonError` about PodMonitor/ExternalSecret | CRDs not there yet; it retries by itself, or press Sync once Prometheus/ESO are Healthy |
 | Certificate stuck | `kubectl -n nexabank-ns describe certificate,challenge`; DNS not propagated; cert-manager started before Envoy Gateway (restart it, step 10.3); `rateLimited` → wait an hour, use staging |
 | Browser says certificate invalid | still on the staging issuer (step 10.4) |
+| Loki / Tempo have no pods, no Service, no PVC, app shows `Sync: Unknown` | The chart failed to **render** (nothing ever reached the cluster). Read it: `kubectl -n argocd get app observability-loki -o jsonpath='{.status.conditions[*].message}'`. Known causes, both fixed in this repo: Loki needs `backend/read/write.replicas: 0` in `loki-values.yml` (chart default is 3 each, and it refuses Monolithic + scalable together); Tempo must **not** set `receivers.jaeger: null` (its Service template reads `jaeger.protocols.*`). After a fix: push, then `kubectl -n argocd annotate app observability-loki argocd.argoproj.io/refresh=hard --overwrite` |
+| Promtail readiness probe fails, no logs in Grafana | Loki is not up yet (see the row above). Promtail recovers by itself once `loki.observability:3100` answers |
+| No traces | Tempo must be Ready first: `kubectl -n observability run t --rm -it --restart=Never --image=curlimages/curl -- curl -s http://tempo:3200/ready`. The collector exports to `tempo.observability.svc.cluster.local:4317` |
 | Observability app `Degraded` | `kubectl -n argocd get app observability-loki -o yaml | less` (conditions). Loki/Tempo/OTel chart values change between versions: compare with the chart's `values.yaml` |
 | No traces | `kubectl -n observability logs deploy/otel-collector`; `kubectl -n nexabank-ns exec deploy/nexabank -- env | grep OTEL` |
 | Nothing you change sticks | `selfHeal: true`: commit and push instead of `kubectl edit` |
@@ -462,7 +520,7 @@ aws secretsmanager list-secrets --region "$AWS_REGION" --query 'SecretList[].Nam
   charts' own value files and checked for syntax (HCL, YAML, `bash -n`, `shellcheck`, `ansible --syntax-check`), but
   `terraform validate/plan`, `helm lint/template` and a real deploy were not run. Expect to fix a detail or two on the first run
   (usually a chart value key); `terraform-ci.yml` will run `validate`/`tflint` for you on push.
-- Chart versions are pinned in `gitops/argocd/platform/*.yaml` and `terraform/variables.tf`/`argocd.tf`. Loki and Tempo come from the
+- Chart versions are pinned in `gitops/argocd/platform/*.yml` and `terraform/variables.tf`/`argocd.tf`. Loki and Tempo come from the
   `grafana-community` Helm repo (they moved from `grafana/helm-charts`).
 - The old `k8s/` folder and `DEPLOYMENT.md` from earlier iterations are no longer used.
 - Dependabot watches Maven and GitHub Actions only; Terraform/Helm versions are bumped by hand.

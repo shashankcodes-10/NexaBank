@@ -25,13 +25,15 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$REPO$BRANCH$REGION$EMAIL$DOMAIN" ] || die "nothing to do: pass at least one option (see --help)"
 
-# portable in-place sed (GNU and BSD)
-sedi() { sed -i.bak -E "$1" "$2" && rm -f "$2.bak"; }
+bash scripts/check-yml.sh   # every YAML file must be .yml, or the seds below miss files
+
+# portable in-place sed (GNU and BSD). A missing file is an error, never silently skipped.
+sedi() { [ -f "$2" ] || die "file not found: $2 (is it named .yml?)"; sed -i.bak -E "$1" "$2" && rm -f "$2.bak"; }
 
 if [ -n "$REPO" ]; then
   [[ "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || die "--repo must look like USER/NexaBank"
   say "Repo -> https://github.com/$REPO.git"
-  for f in gitops/argocd/*.yaml gitops/argocd/platform/*.yaml; do
+  for f in gitops/argocd/*.yml gitops/argocd/platform/*.yml; do
     sedi "s#(repoURL:[[:space:]]*)https://github\.com/[^[:space:]]+\.git#\1https://github.com/${REPO}.git#" "$f"
   done
   sedi "s#^(repo_url:[[:space:]]*).*#\1https://github.com/${REPO}.git#" ansible/group_vars/nexabank.yml
@@ -40,7 +42,7 @@ fi
 
 if [ -n "$BRANCH" ]; then
   say "Branch -> $BRANCH"
-  for f in gitops/argocd/*.yaml gitops/argocd/platform/*.yaml; do
+  for f in gitops/argocd/*.yml gitops/argocd/platform/*.yml; do
     sedi "s#(targetRevision:[[:space:]]*)(main|master|[A-Za-z0-9._/-]+)([[:space:]]*)\$#\1${BRANCH}\3#" "$f"
   done
   # chart versions are quoted ("v1.2.3"); only unquoted targetRevision lines are branches, handled above
@@ -57,19 +59,19 @@ fi
 
 if [ -n "$EMAIL" ]; then
   say "Let's Encrypt email -> $EMAIL"
-  sedi "s|(email:[[:space:]]*)[^[:space:]]+([[:space:]]*# configure:email)|\1${EMAIL}\2|" gitops/cert-manager/clusterissuers.yaml
+  sedi "s|(email:[[:space:]]*)[^[:space:]]+([[:space:]]*# configure:email)|\1${EMAIL}\2|" gitops/cert-manager/clusterissuers.yml
   ok "ClusterIssuers updated"
 fi
 
 if [ -n "$DOMAIN" ]; then
   say "Domain -> $DOMAIN (HTTPS on, staging certificate first)"
   # Helm mode
-  sedi "s|(hostname:[[:space:]]*)\"[^\"]*\"([[:space:]]*# configure:domain)|\1\"${DOMAIN}\"\2|" gitops/argocd/nexabank-helm.yaml
-  sedi "s|(enabled:[[:space:]]*)(true\|false)([[:space:]]*# configure:tls)|\1true\3|" gitops/argocd/nexabank-helm.yaml
+  sedi "s|(hostname:[[:space:]]*)\"[^\"]*\"([[:space:]]*# configure:domain)|\1\"${DOMAIN}\"\2|" gitops/argocd/nexabank-helm.yml
+  sedi "s|(enabled:[[:space:]]*)(true\|false)([[:space:]]*# configure:tls)|\1true\3|" gitops/argocd/nexabank-helm.yml
   # Raw mode: fill in the HTTPS gateway and point the Application at it
-  sedi "s|[A-Za-z0-9.-]+([[:space:]]*# configure:domain)|${DOMAIN}\1|" k8s/gateway-https/gateway.yaml
-  sedi "s|(path:[[:space:]]*)k8s/gateway-(http\|https)([[:space:]]*# configure:gateway-path)|\1k8s/gateway-https\3|" gitops/argocd/nexabank-raw.yaml
-  ok "both modes updated (nexabank-helm.yaml, nexabank-raw.yaml + k8s/gateway-https)"
+  sedi "s|[A-Za-z0-9.-]+([[:space:]]*# configure:domain)|${DOMAIN}\1|" k8s/gateway-https/gateway.yml
+  sedi "s|(path:[[:space:]]*)k8s/gateway-(http\|https)([[:space:]]*# configure:gateway-path)|\1k8s/gateway-https\3|" gitops/argocd/nexabank-raw.yml
+  ok "both modes updated (nexabank-helm.yml, nexabank-raw.yml + k8s/gateway-https)"
   warn "Real email needed for HTTPS: ./scripts/configure.sh --email you@yourdomain.com"
 fi
 

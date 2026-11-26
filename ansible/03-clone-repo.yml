@@ -21,8 +21,20 @@
       become: true
       become_user: "{{ login_user }}"
 
-    - name: Remind about git identity
+    - name: Set the git identity (once; kept in ~/.gitconfig)
+      ansible.builtin.shell: |
+        git config --global user.name  "{{ git_user_name }}"
+        git config --global user.email "{{ git_user_email }}"
+        git config --global pull.rebase true
+        git config --global init.defaultBranch main
+      become: true
+      become_user: "{{ login_user }}"
+      changed_when: false
+      when: git_user_name | length > 0 and git_user_email | length > 0
+
+    - name: Remind about the one thing Ansible cannot do (GitHub login)
       ansible.builtin.debug:
         msg: >-
-          Cloned to /home/{{ login_user }}/NexaBank. To push from this machine, log in with
-          `gh auth login` and set `git config --global user.name/user.email`.
+          Cloned to /home/{{ login_user }}/NexaBank and git identity set. Run ONCE by hand:
+          `gh auth login` then `gh auth setup-git` (token needs the repo and workflow scopes).
+          After that, pushing from this machine never asks again.

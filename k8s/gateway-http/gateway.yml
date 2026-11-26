@@ -1,5 +1,5 @@
 # HTTP only: reachable on the load balancer hostname. Used when you have no domain.
-# The GatewayClass "envoy" is created by scripts/deploy.sh (gitops/gateway/gatewayclass.yaml).
+# The GatewayClass "envoy" is created by scripts/deploy.sh (gitops/gateway/gatewayclass.yml).
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:

@@ -1,5 +1,5 @@
 # The application deployed from the Helm chart in helm/nexabank  (mode: helm).
-# Alternative: nexabank-raw.yaml (plain manifests). Apply ONE of the two, never both.
+# Alternative: nexabank-raw.yml (plain manifests). Apply ONE of the two, never both.
 # scripts/configure.sh edits the lines marked "configure:".
 apiVersion: argoproj.io/v1alpha1
 kind: Application

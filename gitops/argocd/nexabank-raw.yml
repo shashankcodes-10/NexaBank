@@ -1,5 +1,5 @@
 # The application deployed from plain manifests in k8s/  (mode: raw, the default).
-# Alternative: nexabank-helm.yaml (Helm chart). Apply ONE of the two, never both.
+# Alternative: nexabank-helm.yml (Helm chart). Apply ONE of the two, never both.
 # scripts/configure.sh edits the lines marked "configure:".
 apiVersion: argoproj.io/v1alpha1
 kind: Application

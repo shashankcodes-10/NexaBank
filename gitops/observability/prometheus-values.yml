@@ -63,7 +63,7 @@ defaultRules:
 
 grafana:
   fullnameOverride: grafana # Service is `grafana`: kubectl -n observability port-forward svc/grafana 3000:80
-  # admin login comes from the Secret built by gitops/external-secrets/grafana-externalsecret.yaml
+  # admin login comes from the Secret built by gitops/external-secrets/grafana-externalsecret.yml
   admin:
     existingSecret: grafana-admin
     userKey: admin-user
