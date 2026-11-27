@@ -1,326 +1,410 @@
 <div align="center">
 
-# DevSecOps Banking Application
+# NexaBank
 
-A high-performance, containerized financial platform built with Spring Boot 3, Java 21, and integrated Contextual AI. This project implements a secure "DevSecOps Pipeline" using GitHub Actions, OIDC authentication, and AWS managed services.
+**A cloud-native banking platform with an on-cluster AI assistant, shipped through a DevSecOps pipeline and run on AWS EKS with Terraform and GitOps.**
 
-[![Java Version](https://img.shields.io/badge/Java-21-blue.svg)](https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
-[![GitHub Actions](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-orange.svg)](.github/workflows/devsecops.yml)
-[![AWS OIDC](https://img.shields.io/badge/Security-OIDC-red.svg)](#phase-3-security-and-identity-configuration)
+[![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://www.oracle.com/java/technologies/javase/jdk21-archive-downloads.html)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-EKS%201.36-326CE5.svg)](terraform/)
+[![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC.svg)](terraform/)
+[![GitOps](https://img.shields.io/badge/GitOps-ArgoCD-EF7B4D.svg)](gitops/)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-orange.svg)](.github/workflows/devsecops.yml)
 
 </div>
 
-![dashboard](screenshots/1.png)
+---
+
+## Contents
+
+1. [Overview](#overview)
+2. [Project tiers](#project-tiers)
+3. [Architecture](#architecture)
+4. [How a request flows](#how-a-request-flows)
+5. [CI/CD pipeline](#cicd-pipeline)
+6. [GitOps and deployment order](#gitops-and-deployment-order)
+7. [Secrets](#secrets)
+8. [Observability](#observability)
+9. [Security](#security)
+10. [Scaling and reliability](#scaling-and-reliability)
+11. [Technology stack](#technology-stack)
+12. [Run it locally](#run-it-locally)
+13. [Deploy to AWS](#deploy-to-aws)
+14. [Configuration reference](#configuration-reference)
+15. [Repository layout](#repository-layout)
+16. [Design decisions](#design-decisions)
+17. [Known limits](#known-limits)
 
 ---
 
-## Technical Architecture
+## Overview
 
-The application is deployed across a multi-tier, segmented AWS environment. The control plane leverages GitHub Actions with integrated security gates at every stage.
+NexaBank is a web banking application: customers register, log in, deposit, withdraw and transfer money, review their transactions, and ask questions in an AI chat assistant. The assistant is a small language model (Ollama, `qwen2.5:1.5b`) that runs inside the same cluster, so no data leaves the platform.
+
+The repository holds everything needed to go from a `git push` to a running, observable, HTTPS-protected deployment on AWS:
+
+| You push | What happens automatically |
+| --- | --- |
+| Application code | Secret scan, lint, SAST, dependency scan, tests, image scan, image build and push, manifest bump, rollout to EKS |
+| Kubernetes manifests or Helm values | ArgoCD syncs the change to the cluster |
+| Terraform | CI checks formatting and validity; you apply it from the control machine |
+
+## Project tiers
+
+The platform is built in layers. Each tier has one job and talks only to its neighbours.
+
+| Tier | Responsibility | Components | Where it lives |
+| --- | --- | --- | --- |
+| **1. Edge** | Public entry, TLS, routing | AWS Network Load Balancer, Envoy Gateway (Gateway API), cert-manager + Let's Encrypt | `k8s/gateway-*`, `gitops/gateway`, `gitops/cert-manager` |
+| **2. Application** | Business logic, UI, sessions, chat endpoint | Spring Boot 3.5 on Java 21 (virtual threads), Thymeleaf pages, Spring Security | `backend/`, `k8s/app` |
+| **3. Data** | Accounts and transactions | MySQL 8 StatefulSet on an encrypted gp3 volume, Flyway migrations | `k8s/app` |
+| **4. AI** | Chat assistant | Ollama serving `qwen2.5:1.5b` from a persistent model volume | `k8s/app` |
+| **5. Platform services** | Things every workload needs | External Secrets Operator, cert-manager, metrics-server, EBS CSI driver | `gitops/argocd/platform`, `terraform/` |
+| **6. Observability** | See what is happening | Prometheus, Grafana, Loki, Promtail, Tempo, OpenTelemetry Collector, alert rules | `gitops/observability` |
+| **7. Infrastructure** | The cloud itself | VPC, EKS, IAM Pod Identity roles, Secrets Manager, S3 state bucket | `terraform/` |
+| **8. Delivery** | Build, scan, deploy | GitHub Actions, Docker Hub, ArgoCD, Ansible control machine | `.github/workflows`, `gitops/argocd`, `ansible/`, `scripts/` |
+
+## Architecture
+
+### System overview
 
 ```mermaid
-graph TD
-    subgraph "External Control Plane"
-        GH[GitHub Actions]
-        User[User Browser]
+flowchart LR
+    dev([Developer]) -->|git push| gh[GitHub]
+    gh --> ci[GitHub Actions<br/>DevSecOps pipeline]
+    ci -->|push image| hub[(Docker Hub)]
+    ci -->|commit new image tag| gh
+
+    user([Customer]) -->|HTTPS| nlb
+
+    subgraph aws["AWS account"]
+        nlb[Network Load Balancer]
+        sm[(Secrets Manager)]
+
+        subgraph eks["EKS cluster"]
+            eg[Envoy Gateway]
+            argo[ArgoCD]
+            subgraph appns["nexabank-ns"]
+                app[NexaBank pods]
+                db[(MySQL)]
+                llm[Ollama]
+            end
+            eso[External Secrets]
+            cm[cert-manager]
+            obs[Observability stack<br/>Prometheus, Grafana, Loki, Tempo]
+        end
     end
 
-    subgraph "AWS Infrastructure (VPC)"
-        subgraph "Application Tier"
-            AppEC2[App EC2 - Ubuntu/Docker]
-            DB[(MySQL 8.0 Container)]
-        end
-
-        subgraph "Artificial Intelligence Tier"
-            Ollama[Ollama EC2 - AI Engine]
-        end
-
-        subgraph "Identity & Secrets"
-            Secrets[AWS Secrets Manager]
-            OIDC[IAM OIDC Provider]
-        end
-
-        subgraph "Registry"
-            ECR[Amazon ECR]
-        end
-    end
-
-    GH -->|1. OIDC Authentication| OIDC
-    GH -->|2. Push Scanned Image| ECR
-    GH -->|3. SSH Orchestration| AppEC2
-    GH -->|4. DAST Scan| AppEC2
-    
-    User -->|Port 8080| AppEC2
-    AppEC2 -->|JDBC Connection| DB
-    AppEC2 -->|REST Integration| Ollama
-    AppEC2 -->|Runtime Secrets| Secrets
-    AppEC2 -->|Pull Image| ECR
+    nlb --> eg --> app
+    app --> db
+    app --> llm
+    app -.->|telemetry| obs
+    eso -->|reads| sm
+    eso -.->|creates Secrets| appns
+    cm -.->|certificates| eg
+    argo -->|pulls manifests| gh
+    argo -->|deploys| appns
+    argo -->|deploys| obs
+    hub -.->|image pull| app
 ```
 
----
-
-## Security Pipeline (DevSecOps Pipeline)
-
-The CI/CD pipeline enforces **9 sequential security gates** before any code reaches production:
-
-| Gate | Name | Tool | Purpose |
-| :---: | :--- | :--- | :--- |
-| 1 | Secret Scan | Gitleaks | Scans entire Git history for leaked secrets |
-| 2 | Lint | Checkstyle | Enforces Java Google-Style coding standards |
-| 3 | SAST | Semgrep | Scans Java source code for security flaws and OWASP Top 10 |
-| 4 | SCA | OWASP Dependency Check (first time run can take more than 30+ minutes) | Scans Maven dependencies for known CVEs |
-| 5 | Build | Maven | Compiles and packages the application |
-| 6 | Container Scan | Trivy | Scans the Docker image for OS and library vulnerabilities |
-| 7 | Push | Amazon ECR | Pushes the image only after Trivy passes |
-| 8 | Deploy | SSH / Docker Compose | Automated deployment to AWS EC2 |
-| 9 | DAST | OWASP ZAP | Dynamic attack surface scanning on live app |
-
----
-
-## Technology Stack
-
-- **Backend Framework**: Java 21, Spring Boot 3.4.1
-- **Security Strategy**: Spring Security, IAM OIDC, Secrets Manager
-- **Persistence Layer**: MySQL 8.0 (Docker Container)
-- **AI Integration**: Ollama (TinyLlama)
-- **DevOps Tooling**: Docker, Docker Compose, GitHub Actions, AWS CLI, jq
-- **Infrastructure**: Amazon EC2, Amazon ECR, Amazon VPC
-
----
-
-## Implementation Phases
-
-### Phase 1: AWS Infrastructure Initialization
-
-1. **Container Registry (ECR)**:
-
-   - Establish a private ECR repository named `devsecops-bankapp`.
-
-      ![ECR](screenshots/2.png)
-
-2. **Application Server (EC2)**:
-
-   - Deploy an Ubuntu 22.04 instance with below `User Data`.
-
-      ```bash
-      #!/bin/bash
-
-      sudo apt update 
-      sudo apt install -y docker.io docker-compose-v2 jq
-      sudo usermod -aG docker ubuntu
-      sudo newgrp docker
-      sudo snap install aws-cli --classic
-      ```
-
-   - Configure Security Group to open inbound rule for Port 22 (Management) and Port 8080 (Service).
-
-      > Better to give `name` to Security Group created.
-
-   - Create an IAM Instance Profile(IAM EC2 role) containing permissions:
-     - `AmazonEC2ContainerRegistryPowerUser`
-     - `AWSSecretsManagerClientReadOnlyAccess`
-
-        ![Permissions](screenshots/3.png)
-
-   - Attach it to Application EC2. Select EC2 -> Actions -> Security -> Modify IAM role -> Attach created IAM role.
-
-      ![IAM role](screenshots/4.png)
-   
-   - Connect to EC2 Instance and Run below command to check whether IAM role is working or not.
-
-      ```bash
-      aws sts get-caller-identity
-      ```
-
-      You will get your account details with IAM role assumed.
-
-3. **AI Engine Tier (Ollama)**:
-   - Deploy a dedicated Ubuntu EC2 instance.
-   - Open Inbound Port `11434` from the Application EC2 Security Group.
-
-      > Better to give `name` to Security Group created.
-    
-      ![ollama-sg](screenshots/8.png)
-
-   - Automate initialization using the [ollama-setup.sh](scripts/ollama-setup.sh) script via EC2 User Data.
-    
-      ![user-data](screenshots/9.png)
-
-   - Verify the AI engine is responsive and the model is pulled in `AI engine EC2`:
-
-     ```bash
-     ollama list
-     ```
-
-      ![ollama-list](screenshots/21.png)
-
----
-
-### Phase 2: Security and Identity Configuration
-
-The deployment pipeline utilizes OpenID Connect (OIDC) for secure, keyless authentication between GitHub and AWS.
-
-1. **IAM Identity Provider**:
-   - Provider URL: `https://token.actions.githubusercontent.com`
-   - Audience: `sts.amazonaws.com`
-
-      ![identity-provider](screenshots/10.png)
-
-2. **Deployment Role**:
-   - Click on created `Identity provider`
-   - Asign & Create a role named `GitHubActionsRole`.
-   - Enter following details:
-      - `Identity provider`: Select created one.
-      - `Audience`: Select created one.
-      - `GitHub organization`: Your GitHub Username or Orgs Name where this repo is located.
-      - `GitHub repository`: Write the Repository name of this project. `(e.g, DevSecOps-Bankapp)`
-      - `GitHub branch`: branch to use for this project `(e.g, devsecops)`
-      - Click on `Next`
-
-      ![role](screenshots/11.png)
-
-   - Assign `AmazonEC2ContainerRegistryPowerUser` permissions.
-
-      ![iam permission](screenshots/12.png)
-
-   - Click on `Next`, Enter name of role and click on `Create role`.
-
-      ![iam role](screenshots/13.png)
-
----
-
-### Phase 3: Secrets and Pipeline Configuration
-
-#### 1. AWS Secrets Manager
-Create a secret named `bankapp/prod-secrets` in `Other type of secret` with the following key-value pairs:
-
-| Secret Key | Description | Sample/Default Value |
-| :--- | :--- | :--- |
-| `DB_HOST` | The MySQL container service name | `db` |
-| `DB_PORT` | The database port | `3306` |
-| `DB_NAME` | The application database name | `bankappdb` |
-| `DB_USER` | The database username | `bankuser` |
-| `DB_PASSWORD` | The database password | `Test@123` |
-| `OLLAMA_URL` | The private URL for the AI tier | `http://<PRIVATE-IP>:11434` |
-
-![aws-ssm](screenshots/14.png)
-
-#### 2. GitHub Repository Secrets
-Configure the following Action Secrets within your GitHub repository settings:
-
-| Secret Name | Description |
-| :--- | :--- |
-| `AWS_ROLE_ARN` | The ARN of the `GitHubActionsRole` |
-| `AWS_REGION` | The AWS region where resources are deployed |
-| `AWS_ACCOUNT_ID` | Your 12-digit AWS account number |
-| `ECR_REPOSITORY` | The name of the ECR repository (`devsecops-bankapp`) |
-| `EC2_HOST` | The public IP address of the Application EC2 |
-| `EC2_USER` | The SSH username (default is `ubuntu`) |
-| `EC2_SSH_KEY` | The content of your private SSH key (`.pem` file) |
-| `NVD_API_KEY` | Free API key from [nvd.nist.gov](https://nvd.nist.gov/developers/request-an-api-key) for OWASP SCA scans |
-
-> **Note**: The `NVD_API_KEY` raises the NVD API rate limit from ~5 requests/30s to 50 requests/30s, reducing the OWASP Dependency Check scan time from 30+ minutes to under 8 minutes. Without it the SCA job will time out.
-
-#### Obtaining the NVD API Key
-
-**Step 1: Request the API Key**
-- Go to [https://nvd.nist.gov/developers/request-an-api-key](https://nvd.nist.gov/developers/request-an-api-key).
-- Enter your `Organzation name`, `email address`, and select `organization type`.
-- Accept **Terms of Use** and Click **Submit**.
-
-   ![request](screenshots/22.png)
-
-**Step 2: Activate the API Key**
-- Check your email inbox for a message from `nvd-noreply@nist.gov`.
-
-   ![email](screenshots/25.png)
-
-- Click the **activation link** in the email.
-- Enter `UUID` provided in email and Enter `Email` to activate
-- The link confirms your key and marks it as active.  
-
-   ![api-activate](screenshots/23.png)
-
-**Step 3: Get the API Key**
-- After clicking the activation link, the page will generate your API key.
-- Copy and save it securely.
-
-   ![api-key](screenshots/24.png)
-
-**Step 4: Add as GitHub Secret**
-- Go to your repository on GitHub.
-- Navigate to **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
-- Name: `NVD_API_KEY`
-- Value: Paste the copied API key.
-- Click **Add Secret**.
-
-![github-secret](screenshots/15.png)
-
----
-
-## Continuous Integration and Deployment
-
-The DevSecOps lifecycle is orchestrated through the [DevSecOps Main Pipeline](.github/workflows/devsecops-main.yml), which securely sequences three modular workflows: [CI](.github/workflows/ci.yml), [Build](.github/workflows/build.yml), and [CD](.github/workflows/cd.yml). Together they enforce **9 sequential security gates** before any code reaches production. Every `git push` to the `main` or `devsecops` branch triggers the full pipeline automatically.
-
-| Gate | Job | Tool | Action |
-| :---: | :--- | :--- | :--- |
-| 1 | `gitleaks` | Gitleaks | **Strict**: Fails if any secrets are found in history. |
-| 2 | `lint` | Checkstyle | **Audit**: Reports style violations but doesn't block (Google Style). |
-| 3 | `sast` | Semgrep | **Strict**: Scans code for vulnerabilities. Fails on findings. |
-| 4 | `sca` | OWASP Dependency Check | **Strict**: Fails if any dependency has CVSS > 7.0. |
-| 5 | `build` | Maven | Standard build and test stage. |
-| 6 | `image_scan` | Trivy | **Strict**: Scans Docker image layers. Fails on any High/Critical CVE. |
-| 7 | `push_to_ecr` | Amazon ECR | Pushes the verified image to AWS ECR using OIDC. |
-| 8 | `deploy` | SSH / Docker Compose | Fetches secrets from AWS Secrets Manager and recreates the container. |
-| 9 | `dast` | OWASP ZAP | **Audit Mode**: Comprehensive scan that reports findings as artifacts, but does not block the pipeline. |
-
-All scan reports (OWASP, Trivy, ZAP) are uploaded as downloadable **Artifacts** in each GitHub Actions run, YOu can look into the **Artifacts**.
-
-- CI/CD
-
-   ![github-actions](screenshots/16.png)
-
-- Artifacts
-
-   ![artifacts](screenshots/26.png)
-   
----
-
-## Operational Verification
-
-- **Process Status**: `docker ps`
-
-  ![docker ps](screenshots/19.png)
-
-- **Application Working**:
-
-  ![app](screenshots/20.png)
-
-- **Database Connectivity**: 
-
-  ```bash
-  docker exec -it db mysql -u <USER> -p bankappdb -e "SELECT * FROM accounts;"
-  ```
-
-  ![mysql-result](screenshots/17.png)
-
-  > **ZAP** is automatically created by **DAST - OWASP ZAP Baseline Scan** job in [cd.yml](.github/workflows/cd.yml). Read more about it(How, Why it does) on google...
-
-- **Network Validation**: 
-
-  ```bash
-  nc -zv <OLLAMA-PRIVATE-IP> 11434
-  ```
-
-  ![ollama-success](screenshots/18.png)
-
----
-
-<div align="center">
-
-Happy Learning
-
-**TrainWithShubham**  
-
-</div>
+### Network layout
+
+One VPC, three availability zones, three subnet tiers.
+
+```mermaid
+flowchart TB
+    internet((Internet))
+
+    subgraph vpc["VPC 10.0.0.0/16"]
+        subgraph pub["Public subnets x3 (10.0.1-3.0/24)"]
+            nlb[Load balancer]
+            nat[NAT gateway]
+        end
+        subgraph priv["Private subnets x3 (10.0.4-6.0/24)"]
+            nodes[EKS worker nodes<br/>app, MySQL, Ollama, platform pods]
+        end
+        subgraph intra["Intra subnets x3 (10.0.7-9.0/24)"]
+            cp[EKS control plane ENIs]
+        end
+    end
+
+    internet --> nlb --> nodes
+    nodes -->|outbound only| nat --> internet
+    nodes <--> cp
+```
+
+- Worker nodes have no public IPs. Inbound traffic reaches them only through the load balancer; outbound traffic (image pulls, Let's Encrypt, Docker Hub) leaves through one NAT gateway.
+- The control plane network interfaces sit in isolated subnets that have no route to the internet.
+
+## How a request flows
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Customer
+    participant N as NLB
+    participant E as Envoy Gateway
+    participant A as NexaBank pod
+    participant D as MySQL
+    participant O as Ollama
+
+    U->>N: HTTPS request
+    N->>E: TCP 443
+    E->>E: Terminate TLS (cert-manager certificate)
+    E->>A: HTTP 8080 (session cookie keeps the user on one pod)
+    A->>D: JDBC query (balance, transfer, history)
+    D-->>A: rows
+    opt Chat message
+        A->>A: Per-user rate limit check
+        A->>O: POST /api/chat (model qwen2.5:1.5b)
+        O-->>A: generated answer
+    end
+    A-->>E: HTML or JSON
+    E-->>U: Response over TLS
+```
+
+HTTP on port 80 is redirected to HTTPS by an `HTTPRoute` filter. Every request also produces a metric, a log line carrying a `trace_id`, and a trace span (see [Observability](#observability)).
+
+## CI/CD pipeline
+
+```mermaid
+flowchart LR
+    push([push to main<br/>or pull request]) --> par
+
+    subgraph par["Quality and security gates (run in parallel)"]
+        direction TB
+        g1[Gitleaks<br/>secrets]
+        g2[Checkstyle<br/>lint]
+        g3[Semgrep<br/>SAST]
+        g4[OWASP Dependency-Check<br/>SCA]
+        g5[Maven tests +<br/>SonarQube Cloud]
+        g6[Hadolint + Trivy<br/>image scan]
+    end
+
+    par --> build[Build and push image<br/>Docker Buildx]
+    build --> hub[(Docker Hub<br/>sha-xxxxxxx)]
+    build --> bump[bump.yml<br/>commit new tag to<br/>k8s/ and helm/]
+    bump --> argo[ArgoCD detects commit<br/>and rolls out]
+```
+
+| Stage | Workflow | Tool | Catches |
+| --- | --- | --- | --- |
+| Secret scan | `secrets_scan.yml` | Gitleaks | Credentials committed to Git |
+| Lint | `lint.yml` | Checkstyle | Style violations |
+| SAST | `sast.yml` | Semgrep | Insecure code patterns |
+| SCA | `sca.yml` | OWASP Dependency-Check | Known CVEs in Maven dependencies |
+| Test and quality | `sonar_scan.yml` | Maven, SonarQube Cloud | Failing tests, code smells |
+| Image scan | `image_scan.yml` | Hadolint, Trivy | Dockerfile problems, OS and library CVEs |
+| Push | `docker_push.yml` | Docker Buildx | Builds `<user>/nexabank:sha-<7>` |
+| Bump | `bump.yml` | sed, git | Writes the tag into the deploy files, commits with `[skip ci]` |
+
+Also in `.github/`: `terraform-ci.yml` (fmt, validate, tflint) and Dependabot for Actions, Maven, Docker and Terraform. Actions are pinned to commit SHAs. The pipeline runs only when `backend/**` or the workflows change, so the bump commit does not trigger another build.
+
+## GitOps and deployment order
+
+ArgoCD uses the **app-of-apps** pattern: one root Application (`gitops/argocd/platform.yml`) creates a child Application per component. Sync waves control the order, so CRDs exist before the resources that use them.
+
+```mermaid
+flowchart LR
+    w0["Wave 0<br/>External Secrets<br/>cert-manager"] --> w1["Wave 1<br/>Secret store config<br/>ClusterIssuers<br/>Prometheus + Grafana<br/>Loki, Tempo"]
+    w1 --> w2["Wave 2<br/>Promtail<br/>OTel Collector"]
+    w2 --> w4["Wave 4<br/>Alert rules"]
+    w4 --> app["NexaBank<br/>(applied by deploy.sh,<br/>independent Application)"]
+```
+
+Bootstrapping:
+
+1. **Terraform** builds the VPC and EKS cluster and installs ArgoCD.
+2. **`scripts/deploy.sh`** installs Envoy Gateway, creates the Gateway class and the secret store, and applies the root Application.
+3. **ArgoCD** installs everything else from Git. Changing anything afterwards is a `git push`.
+
+The application can be deployed from plain manifests (`k8s/`, default) or the Helm chart (`helm/nexabank`). Both create the same resources; apply only one.
+
+## Secrets
+
+No password is stored in Git, Terraform state or container images.
+
+```mermaid
+flowchart LR
+    you([You]) -->|scripts/set-secrets.sh| sm[(AWS Secrets Manager<br/>nexabank/mysql<br/>nexabank/grafana)]
+    sm -->|read-only, scoped to nexabank/*| eso[External Secrets Operator<br/>EKS Pod Identity]
+    eso -->|creates| ks[Kubernetes Secrets]
+    ks --> pods[App, MySQL, Grafana pods]
+```
+
+Terraform creates the empty secret containers and the IAM role; you supply the values. The External Secrets role can read only secrets whose name starts with `nexabank/`.
+
+## Observability
+
+```mermaid
+flowchart LR
+    subgraph src["Sources"]
+        app[NexaBank pods<br/>Actuator metrics<br/>OTel Java agent]
+        k8s[Nodes, kubelet, cAdvisor,<br/>kube-state-metrics]
+        logs[Container logs]
+    end
+
+    app -->|PodMonitor scrape| prom[Prometheus]
+    k8s --> prom
+    logs --> pt[Promtail] --> loki[Loki]
+    app -->|OTLP| otel[OTel Collector] --> tempo[Tempo]
+
+    prom --> gf[Grafana]
+    loki --> gf
+    tempo --> gf
+    prom --> alerts[Alert rules]
+```
+
+| Signal | Stack | Retention |
+| --- | --- | --- |
+| Metrics | Prometheus, node-exporter, kube-state-metrics, cAdvisor, app `PodMonitor` | 7 days / 8 GB |
+| Logs | Promtail to Loki (single binary, gp3 volume) | 7 days |
+| Traces | OpenTelemetry Java agent to the OTel Collector to Tempo; health-check spans are filtered out | local storage |
+| Dashboards | Grafana with Prometheus, Loki and Tempo data sources | |
+| Alerts | `NexaBankNoReplicasAvailable`, `NexaBankHigh5xxRate`, `NexaBankPodsCannotStart`, `OllamaDown`, `StoragePending` | |
+
+Logs carry the trace ID, so you can jump from a log line to its trace in Grafana. Nothing is exposed publicly; open Grafana with a port-forward:
+
+```bash
+kubectl -n observability port-forward svc/grafana 3000:80    # http://localhost:3000, user admin
+```
+
+## Security
+
+| Layer | Control |
+| --- | --- |
+| Source | Gitleaks on every push; Dependabot for dependencies and actions; Actions pinned to SHAs |
+| Build | Semgrep (SAST), OWASP Dependency-Check (SCA), Hadolint, Trivy; multi-stage Dockerfile |
+| Image | Immutable `sha-<7>` tags, never `latest` for the app |
+| Network | Private worker nodes; load balancer is the only public entry; control plane in isolated subnets |
+| Transport | TLS terminated at the Gateway with Let's Encrypt certificates; HTTP redirects to HTTPS |
+| Runtime | Pods run as non-root with `allowPrivilegeEscalation: false`, all Linux capabilities dropped, seccomp default profile |
+| Identity | EKS Pod Identity gives each controller its own narrowly scoped IAM role; no node-wide credentials |
+| Secrets | Secrets Manager + External Secrets; encrypted EBS volumes; secrets never in Git or state |
+| Application | Spring Security authentication; per-user rate limit on the AI chat |
+
+## Scaling and reliability
+
+- **App tier:** a HorizontalPodAutoscaler keeps 2 to 4 replicas, scaling on 70 % CPU (fast scale-up, slow scale-down). Startup, readiness and liveness probes use Actuator health endpoints. Cookie-based session affinity at the Gateway keeps a user on one pod.
+- **Data tier:** one MySQL replica on a gp3 volume that survives pod restarts. Schema changes are versioned with Flyway.
+- **AI tier:** one Ollama replica; the model lives on a persistent volume so it downloads only once.
+- **Cluster:** managed node group across three availability zones, 3 nodes by default and up to 5; metrics-server for autoscaling.
+- **Startup order:** an init container makes the app wait for MySQL.
+
+## Technology stack
+
+| Area | Technology |
+| --- | --- |
+| Backend | Java 21, Spring Boot 3.5, Spring Security, Spring Data JPA, Flyway |
+| Frontend | Server-rendered Thymeleaf pages |
+| Database | MySQL 8 |
+| AI | Ollama, `qwen2.5:1.5b` |
+| Containers | Docker (multi-stage), Docker Hub |
+| Orchestration | Amazon EKS (Kubernetes 1.36), Envoy Gateway (Gateway API), HPA |
+| Infrastructure as code | Terraform (S3 remote state with native locking), Ansible |
+| GitOps | ArgoCD (app-of-apps, sync waves), Helm |
+| CI/CD | GitHub Actions: Gitleaks, Checkstyle, Semgrep, OWASP Dependency-Check, SonarQube Cloud, Hadolint, Trivy |
+| Secrets | AWS Secrets Manager, External Secrets Operator, EKS Pod Identity |
+| TLS | cert-manager, Let's Encrypt (HTTP-01) |
+| Observability | Prometheus, Grafana, Loki, Promtail, Tempo, OpenTelemetry |
+
+## Run it locally
+
+Requirements: Docker with Compose.
+
+```bash
+cp .env.example .env          # change the passwords
+docker compose up --build
+```
+
+Open <http://localhost:8080>. Compose starts MySQL, Ollama (the model, about 1 GB, downloads on first start) and the app. The manifests in `k8s/` also run on a local `kind` cluster.
+
+## Deploy to AWS
+
+The full step-by-step runbook is **[DEPLOY.md](DEPLOY.md)**. The path is:
+
+```mermaid
+flowchart LR
+    a[1. Create control<br/>EC2 by hand] --> b[2. Ansible installs<br/>tools]
+    b --> c[3. Terraform bootstrap<br/>S3 state bucket]
+    c --> d[4. Terraform main<br/>VPC, EKS, ArgoCD]
+    d --> e[5. set-secrets.sh<br/>your passwords]
+    e --> f[6. deploy.sh<br/>Gateway + app-of-apps]
+    f --> g[7. configure.sh<br/>domain + HTTPS]
+```
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/configure.sh` | Sets repo URL, region, domain and Let's Encrypt email across the repo |
+| `scripts/set-secrets.sh` | Stores your database and Grafana passwords in Secrets Manager |
+| `scripts/deploy.sh` | Installs Envoy Gateway and the ArgoCD app-of-apps; safe to re-run |
+| `scripts/destroy.sh` | Tears everything down in a safe order; `--bootstrap` also removes the state bucket |
+
+Cost note: EKS, the worker nodes, the NAT gateway and the load balancer bill by the hour. Destroy the environment when you are not using it.
+
+## Configuration reference
+
+**GitHub Actions** (Settings, Secrets and variables, Actions):
+
+| Name | Type | Used for |
+| --- | --- | --- |
+| `DOCKERHUB_USERNAME` | variable | Image repository owner |
+| `DOCKERHUB_TOKEN` | secret | Docker Hub login |
+| `SONAR_TOKEN` | secret | SonarQube Cloud |
+| `SONAR_HOST_URL` | variable | SonarQube host |
+| `NVD_API_KEY` | secret | OWASP Dependency-Check (free key from nvd.nist.gov) |
+
+**Terraform** (`terraform/terraform.tfvars`): `aws_region`, `cluster_name`, `cluster_version`, `node_instance_type`, `node_desired_count`, `node_max_count`, `node_disk_size`. The region is set here once and every script reads it from here.
+
+**Application** (environment, from the ConfigMap and the Secret): `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `OLLAMA_URL`, `OLLAMA_MODEL`, plus the credentials from Secrets Manager.
+
+## Repository layout
+
+```
+.
+├── backend/                Spring Boot app, Dockerfile, OpenTelemetry Java agent
+├── k8s/
+│   ├── app/                application, MySQL, Ollama, HPA, PVCs, services, PodMonitor
+│   ├── gateway-http/       Gateway + routes without TLS
+│   └── gateway-https/      Gateway + routes with TLS and HTTP-to-HTTPS redirect
+├── helm/nexabank/          the same application as a Helm chart
+├── gitops/
+│   ├── argocd/             root Application, app Applications, platform/ (one per component)
+│   ├── gateway/            GatewayClass for Envoy Gateway
+│   ├── cert-manager/       Let's Encrypt ClusterIssuers (staging and production)
+│   ├── external-secrets/   Grafana ExternalSecret, namespaces
+│   └── observability/      Helm values per tool, alert rules
+├── terraform/
+│   ├── bootstrap/          S3 state bucket (local state)
+│   └── *.tf                VPC, EKS, Pod Identity, secrets, storage class, ArgoCD
+├── ansible/                playbooks that prepare the control EC2 machine
+├── scripts/                configure, set-secrets, deploy, destroy
+├── .github/workflows/      CI pipeline and Terraform CI
+├── docker-compose.yml      local run
+└── DEPLOY.md               deployment runbook
+```
+
+## Design decisions
+
+- **GitOps over pipeline-driven deploys.** CI never talks to the cluster. It commits an image tag; ArgoCD pulls and applies it. The cluster state is always readable in Git, and rollback is a `git revert`.
+- **Terraform stops where Kubernetes begins.** Terraform builds the cloud and installs ArgoCD; everything inside the cluster is declared in Git.
+- **Secrets stay outside Git.** Values go to Secrets Manager; External Secrets turns them into Kubernetes Secrets at runtime.
+- **Gateway API instead of Ingress.** Envoy Gateway implements the current standard and handles TLS, redirects and session affinity.
+- **Immutable image tags.** `sha-<7>` ties every running pod to a commit.
+- **One source of truth for the region.** `terraform.tfvars`; scripts read it instead of keeping copies.
+- **Local AI.** The model runs next to the app, so customer questions never leave the cluster.
+- **Plain manifests and Helm, side by side.** Plain manifests match what was tested on kind; the chart suits several environments. Use one.
+- **`.yml` everywhere.** Scripts and ArgoCD name files exactly, so one extension avoids silent misses. Helm's `Chart.yaml` and `values.yaml` are the only exceptions, because Helm requires those names.
+
+## Known limits
+
+- MySQL is a single instance, and Ollama runs on CPU, so chat answers can take several seconds. Both are fine for a demo or learning setup, not for production banking.
+- There is one NAT gateway (cheaper, but a single point of failure) and one Ollama replica.
+- The Docker Hub repository must be public, or a pull secret must be added.
+- The platform tools are installed from public Helm charts; their versions are pinned by hand and not tracked by Dependabot.
+- The plain-manifest path has been deployed to a real cluster. The Helm chart path has had less testing, so prefer the plain manifests unless you need the chart.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

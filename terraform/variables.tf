@@ -19,7 +19,7 @@ variable "cluster_version" {
 variable "node_instance_type" {
   description = "Worker node type. App + observability stack request ~9 GiB, so t3.large (8 GiB) x2 is the minimum that fits."
   type        = string
-  default     = "t3.medium"
+  default     = "t3.large"
 }
 
 variable "node_desired_count" {
