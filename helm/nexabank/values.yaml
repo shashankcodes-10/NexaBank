@@ -2,7 +2,7 @@
 # Do not rename the markers.
 image:
   repository: shashank971/nexabank # managed by bump.yml (repository)
-  tag: "sha-6f97d29" # managed by bump.yml (tag)
+  tag: "sha-b44da31" # managed by bump.yml (tag)
   pullPolicy: IfNotPresent
 
 secrets:
