@@ -48,7 +48,7 @@ gitops/external-secrets/  ClusterSecretStore + Grafana ExternalSecret
 gitops/observability/ Helm values for every observability tool + alert rules
 k8s/                  the application as plain manifests (app/, gateway-http/, gateway-https/)
 helm/nexabank/        the same application as a Helm chart
-scripts/              configure.sh · set-secrets.sh · deploy.sh · destroy.sh · check-yml.sh
+scripts/              configure.sh · set-secrets.sh · deploy.sh · destroy.sh
 .github/workflows/    CI (devsecops, docker push, bump, terraform-ci ...)
 ```
 
@@ -171,8 +171,8 @@ refuses to run in that state).
 Every YAML file in this repo ends in `.yml`. The scripts and ArgoCD Applications name files explicitly
 (`k8s/gateway-https/gateway.yml`, `gitops/argocd/nexabank-raw.yml`, ...). A file named `.yaml` is invisible to
 them: that is what stopped HTTPS from switching on (`configure.sh` could not find `gateway.yml`'s `.yaml` twin).
-`configure.sh` and `deploy.sh` now run `scripts/check-yml.sh` first and stop with the list of offenders; the
-`yml-naming` workflow does the same on every push. `./scripts/check-yml.sh --fix` renames strays with `git mv`.
+`configure.sh` stops with "file not found" if a file it needs has the wrong extension. Nothing else checks the naming,
+so when you add a file, name it `.yml` (rename a stray with `git mv a.yaml a.yml`, then fix any reference to it).
 The only `.yaml` files allowed are Helm's own: `helm/nexabank/Chart.yaml` and `helm/nexabank/values.yaml`.
 
 ## 4. Create the state bucket

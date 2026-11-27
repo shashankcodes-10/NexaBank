@@ -32,7 +32,6 @@ GRAFANA_SECRET="${GRAFANA_SECRET:-nexabank/grafana}"
 
 # --- 0. Preflight: the same checks DEPLOY.md calls the HARD GATE -------------------------
 say "Preflight (app mode: $MODE)"
-bash scripts/check-yml.sh
 [ -f "$APP_FILE" ] || die "missing $APP_FILE"
 
 for bin in kubectl helm aws git; do

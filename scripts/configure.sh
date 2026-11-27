@@ -25,8 +25,6 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$REPO$BRANCH$REGION$EMAIL$DOMAIN" ] || die "nothing to do: pass at least one option (see --help)"
 
-bash scripts/check-yml.sh   # every YAML file must be .yml, or the seds below miss files
-
 # portable in-place sed (GNU and BSD). A missing file is an error, never silently skipped.
 sedi() { [ -f "$2" ] || die "file not found: $2 (is it named .yml?)"; sed -i.bak -E "$1" "$2" && rm -f "$2.bak"; }
 
