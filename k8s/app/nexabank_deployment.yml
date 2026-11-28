@@ -48,7 +48,7 @@ spec:
             limits: { memory: 64Mi, cpu: 100m }
       containers:
         - name: nexabank
-          image: shashank971/nexabank:sha-a9fc26b # managed by bump.yml (image)
+          image: shashank971/nexabank:sha-980b746 # managed by bump.yml (image)
           imagePullPolicy: IfNotPresent
           securityContext:
             runAsUser: 65532
