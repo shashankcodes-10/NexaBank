@@ -13,27 +13,32 @@
 
 </div>
 
+<p align="center">
+  <img src="docs/screenshots/02-dashboard-ai-chat.png" alt="NexaBank dashboard with the Nexa AI chat assistant" width="900">
+</p>
+
 ---
 
 ## Contents
 
 1. [Overview](#overview)
-2. [Project tiers](#project-tiers)
-3. [Architecture](#architecture)
-4. [How a request flows](#how-a-request-flows)
-5. [CI/CD pipeline](#cicd-pipeline)
-6. [GitOps and deployment order](#gitops-and-deployment-order)
-7. [Secrets](#secrets)
-8. [Observability](#observability)
-9. [Security](#security)
-10. [Scaling and reliability](#scaling-and-reliability)
-11. [Technology stack](#technology-stack)
-12. [Run it locally](#run-it-locally)
-13. [Deploy to AWS](#deploy-to-aws)
-14. [Configuration reference](#configuration-reference)
-15. [Repository layout](#repository-layout)
-16. [Design decisions](#design-decisions)
-17. [Known limits](#known-limits)
+2. [Screenshots](#screenshots)
+3. [Project tiers](#project-tiers)
+4. [Architecture](#architecture)
+5. [How a request flows](#how-a-request-flows)
+6. [CI/CD pipeline](#cicd-pipeline)
+7. [GitOps and deployment order](#gitops-and-deployment-order)
+8. [Secrets](#secrets)
+9. [Observability](#observability)
+10. [Security](#security)
+11. [Scaling and reliability](#scaling-and-reliability)
+12. [Technology stack](#technology-stack)
+13. [Run it locally](#run-it-locally)
+14. [Deploy to AWS](#deploy-to-aws)
+15. [Configuration reference](#configuration-reference)
+16. [Repository layout](#repository-layout)
+17. [Design decisions](#design-decisions)
+18. [Known limits](#known-limits)
 
 ---
 
@@ -48,6 +53,40 @@ The repository holds everything needed to go from a `git push` to a running, obs
 | Application code | Secret scan, lint, SAST, dependency scan, tests, image scan, image build and push, manifest bump, rollout to EKS |
 | Kubernetes manifests or Helm values | ArgoCD syncs the change to the cluster |
 | Terraform | CI checks formatting and validity; you apply it from the control machine |
+
+## Screenshots
+
+### The application
+
+| Sign in | Dashboard and Nexa AI assistant |
+| --- | --- |
+| <img src="docs/screenshots/01-login.png" alt="NexaBank sign-in page"> | <img src="docs/screenshots/02-dashboard-ai-chat.png" alt="Dashboard with balance, quick actions and the Nexa AI chat"> |
+
+### Running on AWS
+
+**GitOps: every ArgoCD application Healthy and Synced**
+
+<img src="docs/screenshots/03-argocd-applications.png" alt="ArgoCD showing 12 healthy applications" width="900">
+
+**CI/CD: DevSecOps pipeline, all gates green, then build and bump**
+
+<img src="docs/screenshots/04-ci-pipeline.png" alt="GitHub Actions run with secrets scan, lint, SAST, SCA, tests, image scan, build and push, and manifest bump" width="900">
+
+### Observability
+
+**Metrics: Grafana node dashboard (Prometheus)**
+
+<img src="docs/screenshots/05-grafana-node-exporter.png" alt="Grafana Node Exporter dashboard" width="900">
+
+**Logs: application and Ollama logs in Loki**
+
+<img src="docs/screenshots/06-grafana-loki-logs.png" alt="Grafana Explore showing Loki logs for namespace nexabank-ns" width="900">
+
+**Traces: NexaBank request traces in Tempo**
+
+<img src="docs/screenshots/07-grafana-tempo-traces.png" alt="Grafana Explore showing Tempo traces for the nexabank service" width="900">
+
+---
 
 ## Project tiers
 
@@ -69,42 +108,32 @@ The platform is built in layers. Each tier has one job and talks only to its nei
 ### System overview
 
 ```mermaid
-flowchart LR
-    dev([Developer]) -->|git push| gh[GitHub]
-    gh --> ci[GitHub Actions<br/>DevSecOps pipeline]
-    ci -->|push image| hub[(Docker Hub)]
-    ci -->|commit new image tag| gh
+flowchart TB
+    user([Customer browser]) -->|HTTPS| nlb[AWS Network Load Balancer]
 
-    user([Customer]) -->|HTTPS| nlb
-
-    subgraph aws["AWS account"]
-        nlb[Network Load Balancer]
-        sm[(Secrets Manager)]
-
-        subgraph eks["EKS cluster"]
-            eg[Envoy Gateway]
+    subgraph eks["Amazon EKS cluster"]
+        direction TB
+        subgraph tiers["Application tiers (nexabank-ns)"]
+            direction TB
+            eg[Envoy Gateway<br/>TLS + routing] --> app[NexaBank<br/>2 to 4 pods]
+            app --> db[(MySQL)]
+            app --> llm[Ollama<br/>AI model]
+        end
+        subgraph plat["Platform services"]
+            direction LR
             argo[ArgoCD]
-            subgraph appns["nexabank-ns"]
-                app[NexaBank pods]
-                db[(MySQL)]
-                llm[Ollama]
-            end
-            eso[External Secrets]
-            cm[cert-manager]
-            obs[Observability stack<br/>Prometheus, Grafana, Loki, Tempo]
+            eso[External<br/>Secrets]
+            cm[cert-<br/>manager]
+            obs[Observability<br/>stack]
         end
     end
 
-    nlb --> eg --> app
-    app --> db
-    app --> llm
-    app -.->|telemetry| obs
-    eso -->|reads| sm
-    eso -.->|creates Secrets| appns
-    cm -.->|certificates| eg
+    nlb --> eg
+    gh[GitHub repo]
+    sm[(Secrets<br/>Manager)]
+    hub[(Docker Hub)]
     argo -->|pulls manifests| gh
-    argo -->|deploys| appns
-    argo -->|deploys| obs
+    eso -->|reads| sm
     hub -.->|image pull| app
 ```
 
@@ -116,21 +145,24 @@ One VPC, three availability zones, three subnet tiers.
 flowchart TB
     internet((Internet))
 
-    subgraph vpc["VPC 10.0.0.0/16"]
-        subgraph pub["Public subnets x3 (10.0.1-3.0/24)"]
+    subgraph vpc["VPC 10.0.0.0/16, three availability zones"]
+        subgraph pub["Public subnets 10.0.1-3.0/24"]
+            direction LR
             nlb[Load balancer]
             nat[NAT gateway]
         end
-        subgraph priv["Private subnets x3 (10.0.4-6.0/24)"]
+        subgraph priv["Private subnets 10.0.4-6.0/24"]
             nodes[EKS worker nodes<br/>app, MySQL, Ollama, platform pods]
         end
-        subgraph intra["Intra subnets x3 (10.0.7-9.0/24)"]
-            cp[EKS control plane ENIs]
+        subgraph intra["Isolated subnets 10.0.7-9.0/24"]
+            cp[EKS control plane network interfaces]
         end
     end
 
-    internet --> nlb --> nodes
-    nodes -->|outbound only| nat --> internet
+    internet -->|inbound| nlb
+    nlb --> nodes
+    nodes -->|outbound only| nat
+    nat --> internet
     nodes <--> cp
 ```
 
@@ -140,27 +172,26 @@ flowchart TB
 ## How a request flows
 
 ```mermaid
+%%{init: {"sequence": {"width": 120, "actorMargin": 20, "messageMargin": 28, "boxMargin": 8}}}%%
 sequenceDiagram
     autonumber
     actor U as Customer
-    participant N as NLB
     participant E as Envoy Gateway
-    participant A as NexaBank pod
+    participant A as NexaBank
     participant D as MySQL
     participant O as Ollama
 
-    U->>N: HTTPS request
-    N->>E: TCP 443
-    E->>E: Terminate TLS (cert-manager certificate)
-    E->>A: HTTP 8080 (session cookie keeps the user on one pod)
-    A->>D: JDBC query (balance, transfer, history)
-    D-->>A: rows
+    U->>E: HTTPS request
+    E->>E: Terminate TLS
+    E->>A: HTTP :8080
+    A->>D: SQL query
+    D-->>A: Rows
     opt Chat message
-        A->>A: Per-user rate limit check
-        A->>O: POST /api/chat (model qwen2.5:1.5b)
-        O-->>A: generated answer
+        A->>A: Rate-limit check
+        A->>O: Chat request
+        O-->>A: Answer
     end
-    A-->>E: HTML or JSON
+    A-->>E: Page or JSON
     E-->>U: Response over TLS
 ```
 
@@ -169,23 +200,27 @@ HTTP on port 80 is redirected to HTTPS by an `HTTPRoute` filter. Every request a
 ## CI/CD pipeline
 
 ```mermaid
-flowchart LR
-    push([push to main<br/>or pull request]) --> par
+flowchart TB
+    push([Push to main or pull request])
 
-    subgraph par["Quality and security gates (run in parallel)"]
+    subgraph par["Run in parallel"]
         direction TB
-        g1[Gitleaks<br/>secrets]
-        g2[Checkstyle<br/>lint]
-        g3[Semgrep<br/>SAST]
-        g4[OWASP Dependency-Check<br/>SCA]
-        g5[Maven tests +<br/>SonarQube Cloud]
-        g6[Hadolint + Trivy<br/>image scan]
+        subgraph c1["Code checks"]
+            direction LR
+            g1[Gitleaks<br/>secrets] ~~~ g2[Checkstyle<br/>lint] ~~~ g3[Semgrep<br/>SAST]
+        end
+        subgraph c2["Dependency and image checks"]
+            direction LR
+            g4[Dependency-<br/>Check SCA] ~~~ g5[Tests +<br/>SonarQube] ~~~ g6[Hadolint +<br/>Trivy]
+        end
+        c1 ~~~ c2
     end
 
+    push --> par
     par --> build[Build and push image<br/>Docker Buildx]
     build --> hub[(Docker Hub<br/>sha-xxxxxxx)]
-    build --> bump[bump.yml<br/>commit new tag to<br/>k8s/ and helm/]
-    bump --> argo[ArgoCD detects commit<br/>and rolls out]
+    build --> bump[bump.yml commits<br/>the new tag to the repo]
+    bump --> argo[ArgoCD detects the commit<br/>and rolls out the new pods]
 ```
 
 | Stage | Workflow | Tool | Catches |
@@ -206,11 +241,13 @@ Also in `.github/`: `terraform-ci.yml` (fmt, validate, tflint) and Dependabot fo
 ArgoCD uses the **app-of-apps** pattern: one root Application (`gitops/argocd/platform.yml`) creates a child Application per component. Sync waves control the order, so CRDs exist before the resources that use them.
 
 ```mermaid
-flowchart LR
-    w0["Wave 0<br/>External Secrets<br/>cert-manager"] --> w1["Wave 1<br/>Secret store config<br/>ClusterIssuers<br/>Prometheus + Grafana<br/>Loki, Tempo"]
-    w1 --> w2["Wave 2<br/>Promtail<br/>OTel Collector"]
-    w2 --> w4["Wave 4<br/>Alert rules"]
-    w4 --> app["NexaBank<br/>(applied by deploy.sh,<br/>independent Application)"]
+flowchart TB
+    w0["Wave 0<br/>External Secrets, cert-manager"]
+    w1["Wave 1<br/>Secret store, ClusterIssuers,<br/>Prometheus + Grafana, Loki, Tempo"]
+    w2["Wave 2<br/>Promtail, OTel Collector"]
+    w4["Wave 4<br/>Alert rules"]
+    app["NexaBank application<br/>(its own Application, applied by deploy.sh)"]
+    w0 --> w1 --> w2 --> w4 --> app
 ```
 
 Bootstrapping:
@@ -226,11 +263,11 @@ The application can be deployed from plain manifests (`k8s/`, default) or the He
 No password is stored in Git, Terraform state or container images.
 
 ```mermaid
-flowchart LR
+flowchart TB
     you([You]) -->|scripts/set-secrets.sh| sm[(AWS Secrets Manager<br/>nexabank/mysql<br/>nexabank/grafana)]
-    sm -->|read-only, scoped to nexabank/*| eso[External Secrets Operator<br/>EKS Pod Identity]
+    sm -->|read-only, only nexabank/*| eso[External Secrets Operator<br/>uses EKS Pod Identity]
     eso -->|creates| ks[Kubernetes Secrets]
-    ks --> pods[App, MySQL, Grafana pods]
+    ks --> pods[App, MySQL and Grafana pods]
 ```
 
 Terraform creates the empty secret containers and the IAM role; you supply the values. The External Secrets role can read only secrets whose name starts with `nexabank/`.
@@ -238,22 +275,32 @@ Terraform creates the empty secret containers and the IAM role; you supply the v
 ## Observability
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph src["Sources"]
-        app[NexaBank pods<br/>Actuator metrics<br/>OTel Java agent]
-        k8s[Nodes, kubelet, cAdvisor,<br/>kube-state-metrics]
+        direction LR
+        app[NexaBank pods<br/>Actuator + OTel agent]
+        k8s[Nodes, kubelet,<br/>cAdvisor, kube-state]
         logs[Container logs]
     end
 
-    app -->|PodMonitor scrape| prom[Prometheus]
-    k8s --> prom
-    logs --> pt[Promtail] --> loki[Loki]
-    app -->|OTLP| otel[OTel Collector] --> tempo[Tempo]
+    subgraph store["Collectors and storage"]
+        direction LR
+        prom[Prometheus]
+        loki[Loki<br/>via Promtail]
+        tempo[Tempo<br/>via OTel Collector]
+    end
 
-    prom --> gf[Grafana]
+    gf[Grafana<br/>dashboards and Explore]
+    alerts[Alert rules]
+
+    app -->|metrics, PodMonitor| prom
+    k8s --> prom
+    logs --> loki
+    app -->|OTLP traces| tempo
+    prom --> gf
     loki --> gf
     tempo --> gf
-    prom --> alerts[Alert rules]
+    prom --> alerts
 ```
 
 | Signal | Stack | Retention |
@@ -325,13 +372,17 @@ Open <http://localhost:8080>. Compose starts MySQL, Ollama (the model, about 1 G
 The full step-by-step runbook is **[DEPLOY.md](DEPLOY.md)**. The path is:
 
 ```mermaid
-flowchart LR
-    a[1. Create control<br/>EC2 by hand] --> b[2. Ansible installs<br/>tools]
-    b --> c[3. Terraform bootstrap<br/>S3 state bucket]
-    c --> d[4. Terraform main<br/>VPC, EKS, ArgoCD]
-    d --> e[5. set-secrets.sh<br/>your passwords]
-    e --> f[6. deploy.sh<br/>Gateway + app-of-apps]
-    f --> g[7. configure.sh<br/>domain + HTTPS]
+flowchart TB
+    subgraph a["Prepare"]
+        direction LR
+        s1[1. Control EC2<br/>created by hand] --> s2[2. Ansible<br/>installs tools] --> s3[3. Terraform bootstrap<br/>S3 state bucket]
+    end
+    subgraph b["Build and deploy"]
+        direction LR
+        s4[4. Terraform main<br/>VPC, EKS, ArgoCD] --> s5[5. set-secrets.sh<br/>your passwords] --> s6[6. deploy.sh<br/>Gateway + apps]
+    end
+    s7[7. configure.sh<br/>domain and HTTPS]
+    a --> b --> s7
 ```
 
 | Script | Purpose |
