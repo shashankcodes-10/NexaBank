@@ -105,6 +105,16 @@ The platform is built in layers. Each tier has one job and talks only to its nei
 
 ## Architecture
 
+### Full architecture
+
+The whole platform on one page: source, the DevSecOps pipeline, the Terraform control machine, the AWS network, the cluster and observability. Dashed lines animate in the direction of the flow.
+
+<p align="center">
+  <img src="docs/architecture/nexabank-architecture-readme.svg" alt="NexaBank architecture: GitHub Actions DevSecOps pipeline, Terraform, Argo CD GitOps, EKS, Envoy Gateway, observability" width="100%">
+</p>
+
+Pink lines are image and GitOps delivery, red is identity and secrets, teal is observability. A static PNG is in [`docs/architecture/`](docs/architecture/nexabank-architecture-readme.png) if the animation does not play in your viewer.
+
 ### System overview
 
 ```mermaid
